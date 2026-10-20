@@ -1,10 +1,10 @@
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
-import { setSteamMenuTheme } from "./launcher/steamMenuTheme";
+import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 
 const ROUTE = "/nierdeck";
 const HOME_ROUTE = "/library/home";
@@ -30,10 +30,25 @@ function StandalonePage() {
   return settings.replaceHome ? null : <LauncherPage mode="standalone" />;
 }
 
+/** Liste des fenêtres habillées, rafraîchie tant que le panneau est ouvert. */
+function useThemedWindows(): string {
+  const [list, setList] = useState(() => themedWindows().join(", "));
+  useEffect(() => {
+    const iv = setInterval(() => setList(themedWindows().join(", ")), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  return list;
+}
+
 function QuickAccessPanel() {
   const [settings, loaded] = useSettings();
+  const windows = useThemedWindows();
+  // Ce panneau est affiché dans la fenêtre d'accès rapide : on la signale au thème.
+  const anchor = useRef<HTMLDivElement>(null);
+  useEffect(() => registerSteamDocument(anchor.current?.ownerDocument), []);
   return (
     <PanelSection>
+      <div ref={anchor} style={{ display: "none" }} />
       <PanelSectionRow>
         <ToggleField
           label="Lancer au démarrage"
@@ -46,7 +61,11 @@ function QuickAccessPanel() {
       <PanelSectionRow>
         <ToggleField
           label="Thème NieR des menus Steam"
-          description="Habille le menu STEAM et l'accès rapide aux couleurs YoRHA."
+          description={
+            settings.themeSteamMenus
+              ? `Fenêtres habillées : ${windows || "aucune pour l'instant"}`
+              : "Habille le menu STEAM et l'accès rapide aux couleurs YoRHA."
+          }
           checked={settings.themeSteamMenus}
           disabled={!loaded}
           onChange={(on) => updateSettings({ themeSteamMenus: on })}
