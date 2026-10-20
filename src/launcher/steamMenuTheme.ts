@@ -20,9 +20,13 @@ const cls = (map: Record<string, string> | undefined, key: string) => {
 function buildCss(): string {
   const gd = gamepadDialogClasses as Record<string, string>;
   const qamTitle = cls(quickAccessMenuClasses as Record<string, string>, "Title");
+  const qamHeader = cls(quickAccessMenuClasses as Record<string, string>, "HeaderContainer");
+  const toggle = cls(gd, "Toggle");
   const toggleRail = cls(gd, "ToggleRail");
   const toggleSwitch = cls(gd, "ToggleSwitch");
   const toggleOn = cls(gd, "On");
+  // Ramène le bleu Steam vers un gris chaud, sans connaître l'élément exact qui le porte.
+  const unblue = "filter: grayscale(1) sepia(0.35) !important;";
 
   // Fond beige quadrillé, encre sombre, angles vifs.
   const paper = `
@@ -52,7 +56,7 @@ ${NIER_FONTS_CSS}
 ${nierTokensCss(`${MAIN}, ${QAM}`)}
 
 /* ---------- Menu principal (STEAM, à gauche) ---------- */
-${MAIN} [role="menu"] {${paper} min-height: 100%; border-right: var(--nier-line) solid var(--nier-low) !important;}
+${MAIN} [role="menu"] {${paper} border-right: var(--nier-line) solid var(--nier-low) !important;}
 ${MAIN} [role="menu"] * {${inherit}}
 ${MAIN} [role="menuitem"] {
   color: var(--nier-low) !important;
@@ -61,6 +65,9 @@ ${MAIN} [role="menuitem"] {
 }
 ${MAIN} [role="menuitem"].gpfocus,
 ${MAIN} [role="menuitem"]:hover {${selected}}
+/* Barre bleue de l'entrée sélectionnée */
+${MAIN} [role="menuitem"]::before,
+${MAIN} [role="menuitem"]::after {${unblue}}
 
 /* ---------- Accès rapide (···, à droite) ---------- */
 ${QAM} {${paper}}
@@ -83,6 +90,16 @@ ${QAM} [role="tabpanel"] > div[style*="sticky"]${qamTitle ? `,\n${QAM} ${qamTitl
   letter-spacing: var(--nier-tracking-title) !important;
   text-shadow: 3px 3px 0 var(--nier-shadow);
   background: transparent !important;
+  /* Steam ombre ces titres collants pour un fond sombre : remplacé par un filet */
+  box-shadow: none !important;
+  border-bottom: var(--nier-line) solid var(--nier-low) !important;
+}
+${QAM} div:has(+ [role="tabpanel"])::before,
+${QAM} div:has(+ [role="tabpanel"])::after,
+${QAM} [role="tabpanel"] > div[style*="sticky"]::before,
+${QAM} [role="tabpanel"] > div[style*="sticky"]::after${qamTitle ? `,\n${QAM} ${qamTitle}::before,\n${QAM} ${qamTitle}::after,\n${QAM} ${qamTitle} *` : ""} {
+  box-shadow: none !important;
+  background: transparent !important;
 }
 ${QAM} .DialogButton {${idle}}
 ${QAM} .DialogButton.gpfocus,
@@ -90,6 +107,9 @@ ${QAM} .DialogButton:hover {${selected}}
 ${toggleRail ? `${QAM} ${toggleRail} {background: var(--nier-mid) !important; border-radius: 0 !important;}` : ""}
 ${toggleRail && toggleOn ? `${QAM} ${toggleOn} ${toggleRail} {background: var(--nier-low) !important;}` : ""}
 ${toggleSwitch ? `${QAM} ${toggleSwitch} {background: var(--nier-high) !important; border-radius: 0 !important;}` : ""}
+${qamHeader ? `${QAM} ${qamHeader}, ${QAM} ${qamHeader}::before, ${QAM} ${qamHeader}::after {box-shadow: none !important; background: transparent !important;}` : ""}
+${toggle ? `${QAM} ${toggle} {${unblue}}` : ""}
+${toggleRail ? `${QAM} ${toggleRail} {${unblue}}` : ""}
 `;
 }
 
