@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+*.zip
+
+# Projets de référence tiers (code d'autres auteurs, polices commerciales) : non publiés
+Ressources/
