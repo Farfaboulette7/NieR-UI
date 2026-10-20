@@ -3,11 +3,13 @@
 //  - yorha-master (dist/yorha.css : fond quadrillé, ombres, encres)
 // Les variables sont posées sur `.nier-root` (et non `:root`) pour ne jamais
 // déborder sur l'interface Steam et rester portables vers d'autres hôtes.
+// `nierTokensCss(sélecteur)` permet de les poser sur d'autres éléments
+// (ex. des menus de l'hôte qu'on veut habiller au style NieR).
 
 export type NierTheme = "light" | "dark";
 
-export const NIER_TOKENS_CSS = `
-.nier-root {
+export const nierTokensCss = (selector: string) => `
+${selector} {
   /* Palette (thème clair = menus du jeu) */
   --nier-high: #dad4bb;          /* beige principal (fond des panneaux) */
   --nier-high-mid: #b7b19c;      /* fond des boutons / items au repos */
@@ -50,7 +52,9 @@ export const NIER_TOKENS_CSS = `
   --nier-gutter: 40px;
   --nier-menu-width: 380px;
 }
+`;
 
+export const NIER_TOKENS_CSS = `${nierTokensCss(".nier-root")}
 /* Thème sombre (inversion high/low, cf. dark.scss) */
 .nier-root[data-nier-theme="dark"] {
   --nier-high: #57544a;

@@ -1,8 +1,10 @@
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
+import { useEffect } from "react";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
-import { loadSettings, updateSettings, useSettings } from "./launcher/settings";
+import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
+import { setSteamMenuTheme } from "./launcher/steamMenuTheme";
 
 const ROUTE = "/nierdeck";
 const HOME_ROUTE = "/library/home";
@@ -13,7 +15,20 @@ const NierIcon = () => (
   </svg>
 );
 
-const StandalonePage = () => <LauncherPage mode="standalone" />;
+/** Ouvre le launcher sans jamais en créer un second : s'il remplace l'accueil, on y retourne. */
+function openLauncher() {
+  Navigation.CloseSideMenus();
+  Navigation.Navigate(getSettings().replaceHome ? HOME_ROUTE : ROUTE);
+}
+
+function StandalonePage() {
+  const [settings] = useSettings();
+  // Garde-fou si la page est atteinte autrement (historique) alors que l'accueil est déjà remplacé.
+  useEffect(() => {
+    if (settings.replaceHome) Navigation.Navigate(HOME_ROUTE);
+  }, [settings.replaceHome]);
+  return settings.replaceHome ? null : <LauncherPage mode="standalone" />;
+}
 
 function QuickAccessPanel() {
   const [settings, loaded] = useSettings();
@@ -29,14 +44,16 @@ function QuickAccessPanel() {
         />
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          description="Ouvre le launcher au style YoRHA."
-          onClick={() => {
-            Navigation.CloseSideMenus();
-            Navigation.Navigate(ROUTE);
-          }}
-        >
+        <ToggleField
+          label="Thème NieR des menus Steam"
+          description="Habille le menu STEAM et l'accès rapide aux couleurs YoRHA."
+          checked={settings.themeSteamMenus}
+          disabled={!loaded}
+          onChange={(on) => updateSettings({ themeSteamMenus: on })}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" description="Affiche le launcher au style YoRHA." onClick={openLauncher}>
           Ouvrir NieRDeck
         </ButtonItem>
       </PanelSectionRow>
@@ -45,7 +62,15 @@ function QuickAccessPanel() {
 }
 
 export default definePlugin(() => {
+  // Le thème des menus suit le réglage (et attend qu'il soit chargé).
+  let menuTheme: boolean | null = null;
+  const syncMenuTheme = () => {
+    const on = getSettings().themeSteamMenus;
+    if (on !== menuTheme) setSteamMenuTheme((menuTheme = on));
+  };
+  const stopSync = onSettingsChange(syncMenuTheme);
   void loadSettings();
+
   routerHook.addRoute(ROUTE, StandalonePage, { exact: true });
 
   // L'accueil Steam est enveloppé dans HomeSwitch, qui choisit selon le réglage.
@@ -65,6 +90,8 @@ export default definePlugin(() => {
     content: <QuickAccessPanel />,
     icon: <NierIcon />,
     onDismount() {
+      stopSync();
+      setSteamMenuTheme(false);
       routerHook.removeRoute(ROUTE);
       routerHook.removePatch(HOME_ROUTE, homePatch);
     },

@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 export interface NierSettings {
   /** Afficher NieRDeck à la place de l'accueil Steam (donc dès le démarrage du mode Gaming). */
   replaceHome: boolean;
+  /** Habiller au style NieR le menu Steam (gauche) et l'accès rapide (droite). */
+  themeSteamMenus: boolean;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: false };
+const DEFAULTS: NierSettings = { replaceHome: false, themeSteamMenus: true };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");
@@ -15,6 +17,16 @@ let current: NierSettings = DEFAULTS;
 let loaded = false;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
+
+export const getSettings = () => current;
+
+/** Écoute les changements hors de React. Retourne la fonction de désabonnement. */
+export function onSettingsChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export async function loadSettings() {
   try {
@@ -37,12 +49,6 @@ export function updateSettings(patch: Partial<NierSettings>) {
 /** Réglages courants, et s'ils ont fini de charger. */
 export function useSettings(): [NierSettings, boolean] {
   const [, setRev] = useState(0);
-  useEffect(() => {
-    const l = () => setRev((r) => r + 1);
-    listeners.add(l);
-    return () => {
-      listeners.delete(l);
-    };
-  }, []);
+  useEffect(() => onSettingsChange(() => setRev((r) => r + 1)), []);
   return [current, loaded];
 }
