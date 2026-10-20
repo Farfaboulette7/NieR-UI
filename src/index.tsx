@@ -1,8 +1,11 @@
-import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses } from "@decky/ui";
+import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
+import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
+import { loadSettings, updateSettings, useSettings } from "./launcher/settings";
 
 const ROUTE = "/nierdeck";
+const HOME_ROUTE = "/library/home";
 
 const NierIcon = () => (
   <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor">
@@ -10,9 +13,21 @@ const NierIcon = () => (
   </svg>
 );
 
+const StandalonePage = () => <LauncherPage mode="standalone" />;
+
 function QuickAccessPanel() {
+  const [settings, loaded] = useSettings();
   return (
     <PanelSection>
+      <PanelSectionRow>
+        <ToggleField
+          label="Lancer au démarrage"
+          description="Remplace l'accueil Steam par NieRDeck, dès le démarrage du mode Gaming."
+          checked={settings.replaceHome}
+          disabled={!loaded}
+          onChange={(on) => updateSettings({ replaceHome: on })}
+        />
+      </PanelSectionRow>
       <PanelSectionRow>
         <ButtonItem
           layout="below"
@@ -30,7 +45,19 @@ function QuickAccessPanel() {
 }
 
 export default definePlugin(() => {
-  routerHook.addRoute(ROUTE, LauncherPage, { exact: true });
+  void loadSettings();
+  routerHook.addRoute(ROUTE, StandalonePage, { exact: true });
+
+  // L'accueil Steam est enveloppé dans HomeSwitch, qui choisit selon le réglage.
+  const homePatch = routerHook.addPatch(HOME_ROUTE, (props: any) => {
+    try {
+      const original = props.children;
+      if (original != null && original?.type !== HomeSwitch) props.children = <HomeSwitch original={original} />;
+    } catch (e) {
+      console.error("[NieRDeck] patch de l'accueil", e);
+    }
+    return props;
+  });
 
   return {
     name: "NieRDeck",
@@ -39,6 +66,7 @@ export default definePlugin(() => {
     icon: <NierIcon />,
     onDismount() {
       routerHook.removeRoute(ROUTE);
+      routerHook.removePatch(HOME_ROUTE, homePatch);
     },
   };
 });

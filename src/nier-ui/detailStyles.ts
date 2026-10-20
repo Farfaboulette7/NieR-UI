@@ -54,7 +54,7 @@ export const NIER_DETAIL_CSS = `
   display: grid;
   grid-template-columns: auto 1fr;
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
 }
 .nier-game-fields dt,
 .nier-game-fields dd {
@@ -70,7 +70,7 @@ export const NIER_DETAIL_CSS = `
 
 .nier-game-description {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.6;
 }
 `;

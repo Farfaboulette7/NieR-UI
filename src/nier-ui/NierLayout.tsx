@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { NIER_TOKENS_CSS, type NierTheme } from "./tokens";
 import { NIER_LAYOUT_CSS } from "./layoutStyles";
 import { NIER_FONTS_CSS } from "./fonts";
 import { NIER_DETAIL_CSS } from "./detailStyles";
+import { NIER_CHROME_CSS } from "./chromeStyles";
 
 // Aucune dépendance à Decky ici : ce module ne connaît que React.
-// La navigation manette (L1/R1, D-pad, A/B) sera branchée par l'hôte.
+// La navigation manette est branchée par l'hôte, qui pilote les props.
 
 export interface NierTab {
   id: string;
@@ -25,6 +26,8 @@ export interface NierLayoutProps {
   tabs: NierTab[];
   activeTabId: string;
   onTabChange: (id: string) => void;
+  /** Contenu aligné à droite de l'en-tête (heure, batterie...). */
+  status?: ReactNode;
 
   /** Titre encadré au-dessus du menu gauche. */
   menuTitle?: string;
@@ -39,15 +42,16 @@ export interface NierLayoutProps {
   detailTitle?: string;
   /** Contenu de la zone de droite (miniature, infos du jeu...). */
   children?: ReactNode;
-  /** Aides de commandes en bas à droite. */
+  /** Aides de commandes, à gauche et à droite du pied de page. */
+  footerStart?: ReactNode;
   footer?: ReactNode;
 
   theme?: NierTheme;
 }
 
-/** Injecte les tokens et les styles du layout. Une seule fois par arbre suffit. */
+/** Injecte police, tokens et styles. Une seule fois par arbre suffit. */
 export function NierStyles() {
-  return <style>{NIER_FONTS_CSS + NIER_TOKENS_CSS + NIER_LAYOUT_CSS + NIER_DETAIL_CSS}</style>;
+  return <style>{NIER_FONTS_CSS + NIER_TOKENS_CSS + NIER_LAYOUT_CSS + NIER_DETAIL_CSS + NIER_CHROME_CSS}</style>;
 }
 
 export function NierLayout({
@@ -55,6 +59,7 @@ export function NierLayout({
   tabs,
   activeTabId,
   onTabChange,
+  status,
   menuTitle,
   menuItems,
   activeItemId,
@@ -62,9 +67,25 @@ export function NierLayout({
   onItemActivate,
   detailTitle,
   children,
+  footerStart,
   footer,
   theme = "light",
 }: NierLayoutProps) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Garde l'item sélectionné visible quand il change sans la souris (manette).
+  useEffect(() => {
+    const list = listRef.current;
+    const item = list?.querySelector<HTMLElement>('.nier-menu-item[aria-selected="true"]')?.parentElement;
+    if (!list || !item) return;
+    const margin = 12;
+    if (item.offsetTop - margin < list.scrollTop) {
+      list.scrollTop = item.offsetTop - margin;
+    } else if (item.offsetTop + item.offsetHeight + margin > list.scrollTop + list.clientHeight) {
+      list.scrollTop = item.offsetTop + item.offsetHeight + margin - list.clientHeight;
+    }
+  }, [activeItemId, activeTabId]);
+
   return (
     <div className="nier-root" data-nier-theme={theme}>
       <NierStyles />
@@ -86,6 +107,7 @@ export function NierLayout({
             </li>
           ))}
         </ul>
+        {status && <div className="nier-header-status">{status}</div>}
       </header>
 
       <div className="nier-rule" aria-hidden="true" />
@@ -93,7 +115,7 @@ export function NierLayout({
       <main className="nier-body">
         <nav className="nier-menu">
           {menuTitle && <h2 className="nier-section-title">{menuTitle}</h2>}
-          <ul className="nier-menu-list" role="listbox">
+          <ul className="nier-menu-list" role="listbox" ref={listRef}>
             {menuItems.map((item) => (
               <li key={item.id}>
                 <button
@@ -123,7 +145,12 @@ export function NierLayout({
         </section>
       </main>
 
-      {footer && <footer className="nier-footer">{footer}</footer>}
+      {(footerStart || footer) && (
+        <footer className="nier-footer">
+          <div className="nier-footer-group">{footerStart}</div>
+          <div className="nier-footer-group">{footer}</div>
+        </footer>
+      )}
     </div>
   );
 }

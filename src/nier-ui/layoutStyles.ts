@@ -65,12 +65,16 @@ export const NIER_LAYOUT_CSS = `
 .nier-header {
   display: flex;
   align-items: flex-end;
-  gap: 48px;
+  gap: 40px;
   padding: 24px var(--nier-gutter) 10px;
+}
+.nier-header-status {
+  margin-left: auto;
+  align-self: center;
 }
 .nier-title {
   margin: 0;
-  font-size: 36px;
+  font-size: 40px;
   font-weight: 400;
   line-height: 1;
   text-transform: uppercase;
@@ -103,7 +107,7 @@ export const NIER_LAYOUT_CSS = `
 .nier-tab {
   min-width: 112px;
   padding: 7px 18px;
-  font-size: 17px;
+  font-size: 19px;
   text-align: center;
 }
 /* Filets haut/bas qui encadrent l'élément actif */
@@ -157,7 +161,7 @@ export const NIER_LAYOUT_CSS = `
 .nier-section-title {
   margin: 0 0 14px;
   padding: 4px 14px;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: var(--nier-weight);
   letter-spacing: var(--nier-tracking-wide);
   border: solid var(--nier-low);
@@ -170,6 +174,7 @@ export const NIER_LAYOUT_CSS = `
   min-height: 0;
 }
 .nier-menu-list {
+  position: relative; /* référence des offsetTop pour le défilement auto */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -185,8 +190,8 @@ export const NIER_LAYOUT_CSS = `
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 8px 14px;
-  font-size: 17px;
+  padding: 9px 14px;
+  font-size: 20px;
   text-align: left;
 }
 /* Petit carré plein à gauche de chaque entrée */
@@ -205,7 +210,7 @@ export const NIER_LAYOUT_CSS = `
 }
 .nier-menu-item-badge {
   flex: none;
-  font-size: 14px;
+  font-size: 16px;
   opacity: 0.8;
 }
 /* Curseur YoRHA (nier-selector.svg) qui oscille devant l'item actif */
@@ -231,7 +236,7 @@ export const NIER_LAYOUT_CSS = `
 }
 .nier-detail-header {
   padding: 7px 16px;
-  font-size: 18px;
+  font-size: 20px;
   letter-spacing: var(--nier-tracking-wide);
   background-color: var(--nier-low);
   color: var(--nier-high);
@@ -247,12 +252,17 @@ export const NIER_LAYOUT_CSS = `
 /* ---------- Pied : aides de commandes ---------- */
 .nier-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 28px;
+  justify-content: space-between;
+  align-items: center;
   margin: 0 var(--nier-gutter);
-  padding: 10px 0 18px;
-  font-size: 14px;
+  padding: 10px 0 16px;
+  font-size: 16px;
   border-top: var(--nier-line) solid var(--nier-mid);
+}
+.nier-footer-group {
+  display: flex;
+  align-items: center;
+  gap: 28px;
 }
 
 /* ---------- Animations ---------- */
