@@ -119,32 +119,67 @@ function readPlaytime(a: any, appid: number, shortcut: boolean): number {
 
 // ───────────── Installé sur ce Deck, ou seulement sur un autre PC ─────────────
 // Avec la retransmission (Remote Play), Steam compte comme « installé » un jeu
-// présent sur un autre PC du réseau : `installed` suit le client sélectionné.
-// On ne regarde que les données de ce Deck (local_per_client_data).
+// présent sur un autre PC du réseau, et liste aussi les raccourcis non-Steam de
+// ce PC. Les données de l'aperçu ne suffisent pas à les distinguer : on demande
+// à Steam ce qui est vraiment sur le Deck.
+//  - jeux Steam : le contenu des dossiers d'installation montés ;
+//  - raccourcis non-Steam : ceux du Deck (GetAllShortcuts, comme le plugin SteamGridDB).
 
-/** Installé sur un autre PC du réseau (retransmissible). */
-function installedElsewhere(a: any): boolean {
-  const clients: any[] = Array.isArray(a?.per_client_data) ? a.per_client_data : [];
-  return clients.some((c) => c && String(c.clientid) !== "0" && c.installed);
+interface LocalIndex {
+  steam: Set<number>;
+  shortcuts: Set<number> | null; // null : API indisponible
 }
 
-function installedHere(a: any, shortcut: boolean): boolean {
-  const local = a?.local_per_client_data;
-  if (local && typeof local.installed === "boolean") {
-    // Prudence pour les raccourcis : on ne les écarte que s'ils sont installés ailleurs.
-    return local.installed || (shortcut && !installedElsewhere(a));
+let localIndex: LocalIndex | null = null;
+let localAsk: Promise<void> | null = null;
+let localAt = 0;
+const LOCAL_REFRESH_MS = 30_000;
+
+async function readLocalIndex(): Promise<LocalIndex> {
+  const steam = new Set<number>();
+  const folders: any[] = (await SteamClient?.InstallFolder?.GetInstallFolders?.()) ?? [];
+  for (const folder of folders) {
+    if (folder?.bIsMounted === false) continue; // carte SD retirée
+    for (const app of folder?.vecApps ?? []) steam.add(Number(app?.nAppID));
   }
-  return shortcut || !!(a?.installed ?? false);
+  let shortcuts: Set<number> | null = null;
+  try {
+    const list: any[] | undefined = await SteamClient?.Apps?.GetAllShortcuts?.();
+    // Liste vide : plutôt une API muette que zéro raccourci, on ne filtre pas.
+    if (Array.isArray(list) && list.length) shortcuts = new Set(list.map((s) => Number(s?.appid ?? s?.data?.appid ?? s)));
+  } catch {
+    shortcuts = null;
+  }
+  return { steam, shortcuts };
+}
+
+/** Relit (au plus toutes les 30 s) ce qui est installé sur le Deck. */
+export function refreshLocalIndex(force = false) {
+  if (localAsk || (!force && Date.now() - localAt < LOCAL_REFRESH_MS)) return;
+  localAsk = readLocalIndex()
+    .then((index) => {
+      // Dossiers vides alors qu'on avait des jeux : lecture ratée, on garde l'ancienne.
+      if (index.steam.size || !localIndex?.steam.size) localIndex = index;
+      localAt = Date.now();
+    })
+    .catch((e) => console.error("[NieRDeck] jeux installés sur le Deck", e))
+    .finally(() => (localAsk = null));
+}
+
+function installedHere(a: any, appid: number, shortcut: boolean): boolean {
+  if (shortcut) return localIndex?.shortcuts ? localIndex.shortcuts.has(appid) : true;
+  if (localIndex) return localIndex.steam.has(appid);
+  return !!(a?.local_per_client_data?.installed ?? a?.installed);
 }
 
 function toGame(a: any): SteamGame | null {
   if (!a || (a.app_type !== APP_TYPE_GAME && a.app_type !== APP_TYPE_SHORTCUT)) return null;
   const shortcut = a.app_type === APP_TYPE_SHORTCUT;
-  const installed = installedHere(a, shortcut);
+  const appid = Number(a.appid);
+  const installed = installedHere(a, appid, shortcut);
   // Raccourci non-Steam d'un autre PC : ni installé ici, ni possédé.
   if (shortcut && !installed) return null;
   const name = String(a.display_name ?? a.sort_as ?? a.appid);
-  const appid = Number(a.appid);
   return {
     appid,
     gameid: String(a.m_gameid ?? a.gameid ?? a.appid),
@@ -242,8 +277,17 @@ export function readLibrary(): SteamLibrary {
 export function useSteamLibrary(refreshMs = 5000): SteamLibrary {
   const [library, setLibrary] = useState(readLibrary);
   useEffect(() => {
-    const iv = setInterval(() => setLibrary(readLibrary()), refreshMs);
-    return () => clearInterval(iv);
+    // Ce qui est installé sur le Deck est relu à part (asynchrone), puis régulièrement.
+    refreshLocalIndex(true);
+    const iv = setInterval(() => {
+      refreshLocalIndex();
+      setLibrary(readLibrary());
+    }, refreshMs);
+    const quick = setTimeout(() => setLibrary(readLibrary()), 800);
+    return () => {
+      clearInterval(iv);
+      clearTimeout(quick);
+    };
   }, [refreshMs]);
   return library;
 }

@@ -17,6 +17,8 @@ A [Decky Loader](https://decky.xyz) plugin for the Steam Deck: a game launcher f
   - Information (from the Steam Store);
   - Achievements;
   - Friends who own the game;
+  - Collections: see and edit the game's Steam collections;
+  - Edit artwork, when the SteamGridDB Decky plugin is installed;
   - a link to the original Steam page.
 - **YoRHa intro** when the launcher starts, and a **"Launching" screen** that covers Steam's wait until the game is running.
 - **NieR theme for Steam**: STEAM menu, quick access menu, dialogs, volume popup.
@@ -36,11 +38,14 @@ After that, updates are done from **System → Updates** (or ··· → NieRDeck
 
 ## Sound and music
 
-NieR:Automata's sound effects and soundtrack belong to Square Enix / PlatinumGames, so **they are not shipped with the plugin**. NieRDeck plays the files you copy to your Deck (in Desktop mode, for example):
+NieR:Automata's sound effects and soundtrack belong to Square Enix / PlatinumGames, so **they are not shipped with the plugin**:
+
+- **Sound effects** come from the Decky plugin **Audio Loader**: install it from the Decky store, then download the *YoRHa Decky* pack from its panel. NieRDeck finds it on its own (System → Sound effects volume opens the Decky store when it is missing).
+- **Music**: copy your own files to the Deck (in Desktop mode, for example).
 
 | What | Where on the Deck |
 |---|---|
-| Sound effects: the Audio Loader pack *YoRHa Decky* | `~/homebrew/sounds/YoRHa Decky/` |
+| Sound effects: Audio Loader's NieR / YoRHa pack | `~/homebrew/sounds/` (installed by Audio Loader) |
 | Background music: any `.mp3`, `.ogg`, `.flac`… (subfolders allowed) | `~/Music/NieRDeck/` (created at first launch) |
 
 Then, in **System**:

@@ -26,7 +26,8 @@ def _installed_version() -> str:
 # Les fichiers audio de NieR (bruitages, bande originale) appartiennent à
 # Square Enix / PlatinumGames : ils ne sont pas livrés avec le plugin. On lit
 # ceux que l'utilisateur a copiés sur son Deck :
-#  - bruitages : un pack Audio Loader YoRHa (~/homebrew/sounds/YoRHa Decky) ;
+#  - bruitages : le pack NieR « YoRHa Decky » de l'extension Audio Loader
+#    (~/homebrew/sounds/) : c'est Audio Loader qui le distribue, pas NieRDeck ;
 #  - musique : ~/Music/NieRDeck (mp3, ogg...).
 # Un petit serveur HTTP local (127.0.0.1, port aléatoire, jeton secret) les
 # sert à l'interface, comme le fait benderthemes.
@@ -48,16 +49,26 @@ def _music_dir() -> str:
     return os.path.join(decky.DECKY_USER_HOME, "Music", "NieRDeck")
 
 
+def _pack_name(folder: str) -> str:
+    """Nom d'un pack Audio Loader (pack.json), ou celui de son dossier."""
+    try:
+        with open(os.path.join(folder, "pack.json"), "r", encoding="utf-8") as f:
+            return str(json.load(f).get("name") or os.path.basename(folder))
+    except Exception:
+        return os.path.basename(folder)
+
+
 def _sfx_dir():
-    """Dossier du pack de bruitages YoRHa (Audio Loader), ou None."""
+    """Dossier du pack de bruitages NieR / YoRHa installé avec Audio Loader, ou None."""
     root = os.path.join(decky.DECKY_HOME, "sounds")
     preferred = os.path.join(root, "YoRHa Decky")
     if os.path.isdir(preferred):
         return preferred
     try:
         for name in sorted(os.listdir(root)):
-            if "yorha" in name.lower() and os.path.isdir(os.path.join(root, name)):
-                return os.path.join(root, name)
+            folder = os.path.join(root, name)
+            if os.path.isdir(folder) and re.search(r"yorha|nier", f"{name} {_pack_name(folder)}", re.IGNORECASE):
+                return folder
     except OSError:
         pass
     return None

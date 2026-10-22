@@ -43,6 +43,8 @@ const remembered: { tabId: string; items: Record<string, string | undefined>; co
 // L'animation d'ouverture (emblème YoRHa) se joue au démarrage, puis à chaque
 // sortie de veille si le launcher est à l'écran.
 let introPlayed = false;
+/** Écart entre deux tours d'une minuterie d'une seconde qui trahit une mise en veille. */
+const SLEEP_GAP_MS = 8000;
 
 declare const SteamClient: any;
 
@@ -74,16 +76,34 @@ export function LauncherPage() {
   const [intro, setIntro] = useState<number | null>(() => (introPlayed ? null : 0));
   useEffect(() => {
     introPlayed = true;
+    // Sortie de veille. Steam la signale (pas toujours au plugin), et les minuteries
+    // s'arrêtent pendant la veille : un grand saut entre deux tours la trahit aussi.
+    let lastWake = 0;
+    const replay = () => {
+      // Pas pendant un jeu (le launcher n'est pas visible), ni deux fois pour le même réveil.
+      if (Router.MainRunningApp || Date.now() - lastWake < 10_000) return;
+      lastWake = Date.now();
+      setIntro(Date.now());
+    };
     let reg: any = null;
     try {
-      reg = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(() => {
-        // Pas pendant un jeu : le launcher n'est pas visible.
-        if (!Router.MainRunningApp) setIntro(Date.now());
-      });
+      reg = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(replay);
     } catch (e) {
       console.error("[NieRDeck] sortie de veille", e);
     }
+    // Pendant un jeu, Steam ralentit aussi les minuteries : un saut juste après une
+    // partie n'est pas un réveil.
+    let lastTick = Date.now();
+    let wasRunning = !!Router.MainRunningApp;
+    const tick = setInterval(() => {
+      const now = Date.now();
+      const running = !!Router.MainRunningApp;
+      if (now - lastTick > SLEEP_GAP_MS && !running && !wasRunning) replay();
+      lastTick = now;
+      wasRunning = running;
+    }, 1000);
     return () => {
+      clearInterval(tick);
       try {
         reg?.unregister?.();
       } catch {
@@ -361,7 +381,7 @@ function collectionsView(collections: SteamCollection[], open: (id: string) => v
             fields={[
               { label: t("games"), value: String(c.games.length) },
               { label: t("installedCount"), value: String(c.games.filter((g) => g.installed).length) },
-              { label: t("playtime"), value: formatPlaytime(playtime) },
+              { label: t("totalPlaytime"), value: formatPlaytime(playtime) },
               { label: t("lastPlayedGame"), value: recent && recent.lastPlayed ? recent.name : "—" },
             ]}
           />
@@ -577,7 +597,10 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
     },
     activate: (id) => {
       const toggle = isToggle(id);
-      if (toggle) {
+      if (id === "sfxVolume" && !sfxFound) {
+        // Les bruitages NieR viennent d'Audio Loader : direction la boutique Decky.
+        Navigation.Navigate("/decky/store");
+      } else if (toggle) {
         playSfx(settings[toggle.id] ? "toggleOff" : "toggleOn");
         updateSettings({ [toggle.id]: !settings[toggle.id] });
       } else if (id === "track") {
@@ -635,7 +658,9 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
       isToggle(id)
         ? t("change")
         : isVolume(id)
-          ? undefined
+          ? id === "sfxVolume" && !sfxFound
+            ? t("openStore")
+            : undefined
           : id === "track"
             ? tracks.length
               ? t("choose")

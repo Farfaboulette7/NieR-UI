@@ -136,6 +136,13 @@ ${field ? `${focusedField} {
 }
 ${focusedField.split(",").map((s) => `${s} *`).join(",")} {color: var(--nier-high) !important;}
 ${focusedField.split(",").map((s) => `${s}::before,${s}::after`).join(",")} {background: transparent !important; animation: none !important;}` : ""}
+${/* Fonds sombres repérés par tagQamColors (contacts, discussions) : papier légèrement teinté */ ""}
+${QAM} [${QAM_TAG}="dark"] {
+  background: rgba(183, 177, 156, 0.35) !important;
+  box-shadow: none !important;
+  color: var(--nier-low) !important;
+}
+${QAM} [${QAM_TAG}="dark"] *:not(img):not(svg) {color: var(--nier-low) !important;}
 ${/* Curseurs (luminosité, volume) : sans le bleu, et dans le gris chaud */ ""}
 ${sliderControl ? `${QAM} ${sliderControl} {${unblue}}` : ""}
 
@@ -264,6 +271,29 @@ ${scopes.length ? `${inScopes('[role="tab"]')} {background: transparent !importa
 ${scopes.length ? `${inScopes('[role="tab"][aria-selected="true"]')},\n${inScopes('[role="tab"].gpfocus')} {${selected}}` : ""}
 ${scopes.length ? `${inScopes('[role="tab"] *')} {${inherit}}` : ""}
 `;
+}
+
+// ───────────── Accès rapide : fonds sombres restants (onglet Contacts...) ─────────────
+// La liste de contacts et ses discussions ont leurs propres fonds sombres et
+// dégradés, aux classes inconnues : repérés à leur couleur, puis éclaircis.
+const QAM_TAG = "data-nierdeck-qam";
+const qamSeen = new WeakSet<Element>();
+
+function tagQamColors(doc: Document) {
+  const view = doc.defaultView;
+  const root = doc.querySelector(QAM);
+  if (!view || !root) return;
+  for (const el of root.querySelectorAll("*")) {
+    // Élément sélectionné : foncé par notre propre thème, on le reverra plus tard.
+    if (qamSeen.has(el) || el.closest(".gpfocus")) continue;
+    qamSeen.add(el);
+    if (el.closest(".DialogButton, [role=tab], [role=tablist]") || el.tagName === "IMG") continue;
+    const style = view.getComputedStyle(el);
+    const color = parseRgb(style.backgroundColor);
+    const gradient = style.backgroundImage.includes("gradient") ? parseRgb(style.backgroundImage) : null;
+    const rgb = color && color[3] >= 0.3 ? color : gradient && gradient[3] >= 0.3 ? gradient : null;
+    if (rgb && 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] < 110) el.setAttribute(QAM_TAG, "dark");
+  }
 }
 
 // ───────────── Fenêtre de volume (et autres petites barres de Steam) ─────────────
@@ -409,6 +439,7 @@ function inject() {
       if (style.textContent !== css) style.textContent = css;
       tagDialogColors(doc);
       watchOsd(doc);
+      tagQamColors(doc);
       titles.push((doc.title || "?").replace(/_uid\d+$/, ""));
     } catch {
       known.delete(doc); // fenêtre fermée entre-temps
@@ -430,6 +461,7 @@ export function setSteamMenuTheme(on: boolean) {
       doc.getElementById(STYLE_ID)?.remove();
       doc.querySelectorAll(`[${TAG}]`).forEach((el) => el.removeAttribute(TAG));
       doc.querySelectorAll(`[${OSD}]`).forEach((el) => el.removeAttribute(OSD));
+      doc.querySelectorAll(`[${QAM_TAG}]`).forEach((el) => el.removeAttribute(QAM_TAG));
     }
     stopWatchingOsd();
     return;

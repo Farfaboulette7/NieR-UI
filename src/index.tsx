@@ -3,6 +3,7 @@ import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { stopMusic } from "./launcher/audio";
 import { LaunchScreen } from "./launcher/LaunchScreen";
+import { refreshLocalIndex } from "./launcher/steamLibrary";
 import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
@@ -95,6 +96,7 @@ export default definePlugin(() => {
   };
   const stopSync = onSettingsChange(syncMenuTheme);
   void loadSettings();
+  refreshLocalIndex(true);
   // Laisse Steam finir de démarrer avant d'interroger GitHub.
   const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
 

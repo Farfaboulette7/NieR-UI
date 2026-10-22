@@ -3,7 +3,8 @@
 // à droite : l'image du jeu ou le contenu de l'entrée sélectionnée.
 import { Navigation, useParams } from "@decky/ui";
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierPeopleList, NierStatus, type NierButton } from "../nier-ui";
+import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierOptionList, NierPeopleList, NierStatus, type NierButton } from "../nier-ui";
+import { gameCollections, hasSteamGridDb, setInCollection, steamGridDbRoute } from "./collections";
 import { playSfx } from "./audio";
 import { useAchievements, useFriendsWhoPlayed, useStoreInfo } from "./gameDetails";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
@@ -74,7 +75,7 @@ function useGame(appid: number): SteamGame | null {
   return game;
 }
 
-type ItemId = "play" | "info" | "achievements" | "friends" | "steam";
+type ItemId = "play" | "info" | "achievements" | "friends" | "collections" | "artwork" | "steam";
 
 const formatDate = (seconds: number) =>
   seconds > 0 ? new Date(seconds * 1000).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" }) : "";
@@ -109,6 +110,9 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
   // La zone de droite a la main : haut/bas la font défiler, B ou gauche rend la main au menu.
   const [panelFocus, setPanelFocus] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
+  // Collection sous le curseur, quand la liste des collections a la main.
+  const [collectionRow, setCollectionRow] = useState<string | null>(null);
+  const [, setRev] = useState(0);
   const setItemId = (id: ItemId) => {
     setItemIdState(id);
     setPanelFocus(false);
@@ -126,6 +130,9 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
     return null;
   }
 
+  const collections = gameCollections(appid);
+  const memberCount = collections.filter((c) => c.member).length;
+
   const items: { id: ItemId; label: string; badge?: string; hint?: string }[] = [
     { id: "play", label: game.installed ? t("play") : t("install"), hint: game.installed ? t("launch") : t("install") },
     { id: "info", label: t("information"), hint: t("browse") },
@@ -137,6 +144,10 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
     ...(game.shortcut
       ? []
       : [{ id: "friends" as const, label: t("contacts"), hint: t("browse"), badge: friends.friends.length ? String(friends.friends.length) : undefined }]),
+    // Catégories Steam du jeu, modifiables comme dans Steam.
+    { id: "collections", label: t("collectionsItem"), hint: t("edit"), badge: memberCount ? String(memberCount) : undefined },
+    // Avec le plugin SteamGridDB : son écran de choix des images.
+    ...(hasSteamGridDb() ? [{ id: "artwork" as const, label: t("editArtwork"), hint: t("open") }] : []),
     { id: "steam", label: t("steamPage"), hint: t("open") },
   ];
   const current = items.find((i) => i.id === itemId) ?? items[0];
@@ -153,15 +164,51 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
     } else if (id === "steam") {
       playSfx("confirm");
       onOriginal();
+    } else if (id === "artwork") {
+      playSfx("confirm");
+      Navigation.Navigate(steamGridDbRoute(appid));
     } else {
+      if (id === "collections") setCollectionRow(collections[0]?.id ?? null);
       setItemIdState(id);
       if (!panelFocus) playSfx("focus");
       setPanelFocus(true);
     }
   };
-  const browsable = current.id === "info" || current.id === "achievements" || current.id === "friends";
+  const browsable = current.id === "info" || current.id === "achievements" || current.id === "friends" || current.id === "collections";
+
+  const toggleCollection = (id: string) => {
+    const c = collections.find((x) => x.id === id);
+    if (!c || c.dynamic) return;
+    if (setInCollection(id, appid, !c.member)) {
+      playSfx(c.member ? "toggleOff" : "toggleOn");
+      setRev((r) => r + 1);
+    }
+  };
 
   actionRef.current = (action: NierAction, repeat: boolean): boolean => {
+    // Liste des collections : haut/bas choisit, A ajoute ou retire le jeu.
+    if (panelFocus && current.id === "collections" && collections.length) {
+      const index = Math.max(0, collections.findIndex((c) => c.id === collectionRow));
+      switch (action) {
+        case "up":
+        case "down": {
+          const next = collections[stepIndex(index, action === "up" ? -1 : 1, collections.length, !repeat)];
+          if (next.id !== collectionRow) playSfx("move");
+          setCollectionRow(next.id);
+          return true;
+        }
+        case "confirm":
+          if (!repeat) toggleCollection(collections[index].id);
+          return true;
+        case "left":
+        case "back":
+          playSfx("unfocus");
+          setPanelFocus(false);
+          return true;
+        default:
+          return true;
+      }
+    }
     if (panelFocus) {
       switch (action) {
         case "up":
@@ -261,6 +308,26 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
         emptyText={friends.loading ? t("friendsLoading") : t("noFriends")}
       />
     );
+  } else if (current.id === "collections") {
+    detail = (
+      <div>
+        <p className="nier-game-description" style={{ marginBottom: 14 }}>
+          {collections.length ? t("collectionsHelp") : t("noCollections")}
+        </p>
+        <NierOptionList
+          options={collections.map((c) => ({
+            id: c.id,
+            label: c.name,
+            active: c.member,
+            badge: c.dynamic ? t("collectionAuto") : c.member ? t("inCollection") : undefined,
+          }))}
+          selectedId={panelFocus ? (collectionRow ?? undefined) : undefined}
+          onActivate={toggleCollection}
+        />
+      </div>
+    );
+  } else if (current.id === "artwork") {
+    detail = <NierGameDetail image={heroes} description={t("editArtworkDesc")} />;
   } else if (current.id === "steam") {
     detail = (
       <NierGameDetail
@@ -305,7 +372,13 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
         </>
       }
       footer={
-        panelFocus ? (
+        panelFocus && current.id === "collections" ? (
+          <>
+            <NierHint button="UPDOWN" label={t("choose")} />
+            <NierHint button="A" label={t("addRemove")} />
+            <NierHint button="B" label={t("gameMenu")} />
+          </>
+        ) : panelFocus ? (
           <>
             <NierHint button="UPDOWN" label={t("scroll")} />
             <NierHint button="B" label={t("gameMenu")} />
