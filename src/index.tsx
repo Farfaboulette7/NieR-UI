@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
+import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 
 const ROUTE = "/nierdeck";
@@ -47,6 +48,7 @@ function QuickAccessPanel() {
   const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => registerSteamDocument(anchor.current?.ownerDocument), []);
   return (
+    <>
     <PanelSection>
       <div ref={anchor} style={{ display: "none" }} />
       <PanelSectionRow>
@@ -77,6 +79,8 @@ function QuickAccessPanel() {
         </ButtonItem>
       </PanelSectionRow>
     </PanelSection>
+    <UpdatesSection />
+    </>
   );
 }
 
@@ -89,6 +93,8 @@ export default definePlugin(() => {
   };
   const stopSync = onSettingsChange(syncMenuTheme);
   void loadSettings();
+  // Laisse Steam finir de démarrer avant d'interroger GitHub.
+  const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
 
   routerHook.addRoute(ROUTE, StandalonePage, { exact: true });
 
@@ -110,6 +116,7 @@ export default definePlugin(() => {
     icon: <NierIcon />,
     onDismount() {
       stopSync();
+      clearTimeout(updateTimer);
       setSteamMenuTheme(false);
       routerHook.removeRoute(ROUTE);
       routerHook.removePatch(HOME_ROUTE, homePatch);
