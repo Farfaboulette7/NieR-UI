@@ -5,7 +5,7 @@ import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
 import { setupNierSounds, useSfxSetup } from "./sfxSetup";
-import { setAirplaneMode, setBluetooth, setBrightness, setWifi, useSteamSystem, type SteamSystemState } from "./steamSystem";
+import { setAirplaneMode, setBluetooth, setBrightness, setWifi, useSteamSystem, useStorage, type SteamSystemState, type StorageDrive } from "./steamSystem";
 import { hasSteamGridDb } from "./collections";
 import { LANGS, t, type StringKey } from "./i18n";
 import { launcherState } from "./launcherState";
@@ -141,6 +141,7 @@ export function LauncherPage() {
   const nowPlaying = useNowPlaying(tabId === "system");
   const sfxSetup = useSfxSetup();
   const steamSystem = useSteamSystem(tabId === "system");
+  const storage = useStorage(tabId === "system");
   // Liste de la zone de droite qui a la main (ex. les morceaux), et sa ligne sélectionnée.
   const [panel, setPanel] = useState<{ tabKey: string; itemId: string; row: string } | null>(null);
 
@@ -196,7 +197,7 @@ export function LauncherPage() {
   } else if (tabId === "store") {
     view = wishlistView(wishlist);
   } else {
-    view = systemView(settings, updates, media, nowPlaying, sfxSetup, steamSystem);
+    view = systemView(settings, updates, media, nowPlaying, sfxSetup, steamSystem, storage);
   }
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
@@ -513,6 +514,7 @@ function systemView(
   now: NowPlaying,
   sfxSetup: ReturnType<typeof useSfxSetup>,
   system: SteamSystemState,
+  storage: StorageDrive[],
 ): TabView {
   const status = updates.status;
   const tracks = media?.music ?? [];
@@ -568,6 +570,22 @@ function systemView(
   const brightnessPct = system.brightness == null ? null : Math.round(system.brightness * 100);
   const steamDetail = (row?: string) => (
     <div>
+      {storage.length > 0 && <Section>{t("storage")}</Section>}
+      {storage.map((d, i) => {
+        const used = d.capacity - d.free;
+        const pct = Math.round((used / d.capacity) * 100);
+        return (
+          <div key={i} className="nier-ach-progress" style={{ marginBottom: 10 }}>
+            <div className="nier-ach-progress-label">
+              <span>{d.label || (d.internal ? t("internalDrive") : t("sdCard"))}</span>
+              <span>{t("storageFree", { free: formatSize(d.free), total: formatSize(d.capacity) })}</span>
+            </div>
+            <div className="nier-ach-progress-bar">
+              <div className="nier-ach-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
       <Section>{t("connectivity")}</Section>
       <NierOptionList
         options={[

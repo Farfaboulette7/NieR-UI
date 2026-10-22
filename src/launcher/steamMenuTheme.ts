@@ -338,7 +338,8 @@ function tagOsd(doc: Document, root: Element) {
       box = null;
       break;
     }
-    if (!box) continue;
+    // Pas un panneau de page Steam (la page Stockage a aussi une barre bleue), ni une grande boîte.
+    if (!box || box.closest(".DialogContent, .DialogContent_InnerWidth, .Panel") || box.querySelectorAll("*").length > 30) continue;
     box.setAttribute(OSD, "box");
     el.setAttribute(OSD, "fill");
     for (const inner of box.querySelectorAll("*")) {

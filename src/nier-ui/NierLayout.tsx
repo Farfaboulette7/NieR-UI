@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type Ref } from "react";
+import { memo, useCallback, useEffect, useRef, type ReactNode, type Ref } from "react";
 import { NIER_TOKENS_CSS, type NierTheme } from "./tokens";
 import { NIER_LAYOUT_CSS } from "./layoutStyles";
 import { NIER_FONTS_CSS } from "./fonts";
@@ -62,6 +62,48 @@ export function NierStyles() {
   return <style>{NIER_FONTS_CSS + NIER_TOKENS_CSS + NIER_LAYOUT_CSS + NIER_DETAIL_CSS + NIER_CHROME_CSS + NIER_OVERLAY_CSS}</style>;
 }
 
+interface MenuRowProps {
+  item: NierMenuItem;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onActivate: (id: string) => void;
+}
+
+/**
+ * Une ligne du menu. Mémorisée : une liste de centaines de jeux ne redessine que
+ * les lignes qui changent (ancienne et nouvelle sélection) à chaque déplacement.
+ */
+const MenuRow = memo(
+  function MenuRow({ item, selected, onSelect, onActivate }: MenuRowProps) {
+    return (
+      <li>
+        <button
+          type="button"
+          role="option"
+          className="nier-menu-item"
+          aria-selected={selected}
+          data-muted={!!item.muted}
+          onMouseEnter={() => onSelect(item.id)}
+          onFocus={() => onSelect(item.id)}
+          onClick={() => onActivate(item.id)}
+        >
+          <span className="nier-menu-item-mark" aria-hidden="true" />
+          <span className="nier-menu-item-label">{item.label}</span>
+          {item.badge && <span className="nier-menu-item-badge">{item.badge}</span>}
+        </button>
+      </li>
+    );
+  },
+  (a, b) =>
+    a.selected === b.selected &&
+    a.item.id === b.item.id &&
+    a.item.label === b.item.label &&
+    a.item.badge === b.item.badge &&
+    a.item.muted === b.item.muted &&
+    a.onSelect === b.onSelect &&
+    a.onActivate === b.onActivate,
+);
+
 export function NierLayout({
   title = "MENU",
   tabs = [],
@@ -82,6 +124,11 @@ export function NierLayout({
   theme = "light",
 }: NierLayoutProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  // Rappels stables pour les lignes mémorisées (l'hôte en recrée à chaque rendu).
+  const handlers = useRef({ onItemSelect, onItemActivate });
+  handlers.current = { onItemSelect, onItemActivate };
+  const select = useCallback((id: string) => handlers.current.onItemSelect(id), []);
+  const activate = useCallback((id: string) => handlers.current.onItemActivate?.(id), []);
 
   // Garde l'item sélectionné visible quand il change sans la souris (manette).
   useEffect(() => {
@@ -129,22 +176,7 @@ export function NierLayout({
           {menuTitle && <h2 className="nier-section-title">{menuTitle}</h2>}
           <ul className="nier-menu-list" role="listbox" ref={listRef}>
             {menuItems.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  role="option"
-                  className="nier-menu-item"
-                  aria-selected={item.id === activeItemId}
-                  data-muted={!!item.muted}
-                  onMouseEnter={() => onItemSelect(item.id)}
-                  onFocus={() => onItemSelect(item.id)}
-                  onClick={() => onItemActivate?.(item.id)}
-                >
-                  <span className="nier-menu-item-mark" aria-hidden="true" />
-                  <span className="nier-menu-item-label">{item.label}</span>
-                  {item.badge && <span className="nier-menu-item-badge">{item.badge}</span>}
-                </button>
-              </li>
+              <MenuRow key={item.id} item={item} selected={item.id === activeItemId} onSelect={select} onActivate={activate} />
             ))}
           </ul>
         </nav>

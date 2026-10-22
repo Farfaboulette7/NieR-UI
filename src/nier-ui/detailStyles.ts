@@ -160,6 +160,9 @@ export const NIER_DETAIL_CSS = `
 .nier-meter-cell[data-on="true"] {
   background-color: var(--nier-low);
 }
+.nier-meter + .nier-options {
+  margin-top: 12px;
+}
 
 /* ---------- Liste de choix (zone de droite) ---------- */
 .nier-options {

@@ -101,6 +101,50 @@ export function setBrightness(value: number) {
   }
 }
 
+// ───────────── Stockage ─────────────
+// Les dossiers d'installation de Steam (disque interne, carte SD) avec leur
+// capacité et leur espace libre, en octets (relevé : nCapacity, nFreeSpace).
+
+export interface StorageDrive {
+  label: string;
+  /** Disque interne (non amovible). */
+  internal: boolean;
+  capacity: number;
+  free: number;
+}
+
+async function readStorage(): Promise<StorageDrive[]> {
+  const folders: any[] = (await SteamClient?.InstallFolder?.GetInstallFolders?.()) ?? [];
+  return folders
+    .filter((f) => f?.bIsMounted !== false && Number(f?.nCapacity) > 0)
+    .map((f) => ({
+      label: String(f.strUserLabel || ""),
+      internal: !!f.bIsFixed,
+      capacity: Number(f.nCapacity),
+      free: Number(f.nFreeSpace) || 0,
+    }));
+}
+
+/** Disques de Steam, relus toutes les 10 s tant que `enabled`. */
+export function useStorage(enabled: boolean): StorageDrive[] {
+  const [drives, setDrives] = useState<StorageDrive[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const update = () =>
+      readStorage()
+        .then((d) => alive && setDrives(d))
+        .catch((e) => console.error("[NieRDeck] stockage", e));
+    update();
+    const iv = setInterval(update, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [enabled]);
+  return drives;
+}
+
 // Réglage client en protobuf : numéro de champ de system_bluetooth_enabled
 // (relevé dans le code de Steam : « system_bluetooth_enabled:{n:24e3, ...readBool} »).
 const BLUETOOTH_FIELD = 24000;

@@ -130,6 +130,8 @@ interface LocalIndex {
 }
 
 let localIndex: LocalIndex | null = null;
+/** Change quand la liste des jeux installés change : invalide le cache des jeux. */
+let localVersion = 0;
 let localError = "";
 let localAsk: Promise<void> | null = null;
 let localAt = 0;
@@ -151,7 +153,11 @@ export function refreshLocalIndex(force = false) {
   localAsk = readLocalIndex()
     .then((index) => {
       // Dossiers vides alors qu'on avait des jeux : lecture ratée, on garde l'ancienne.
-      if (index.steam.size || !localIndex?.steam.size) localIndex = index;
+      if (index.steam.size || !localIndex?.steam.size) {
+        const changed = !localIndex || [...index.steam].join() !== [...localIndex.steam].join();
+        localIndex = index;
+        if (changed) localVersion++;
+      }
       localAt = Date.now();
     })
     .catch((e) => {
@@ -225,6 +231,40 @@ function toGame(a: any): SteamGame | null {
   };
 }
 
+// ───────────── Cache des jeux ─────────────
+// Une bibliothèque compte des centaines d'entrées, relues toutes les 5 s et
+// présentes dans plusieurs collections : chaque jeu n'est reconstruit que si ses
+// données changent. Les jeux inchangés restent les mêmes objets, ce qui évite de
+// redessiner les listes. Les images (SteamGridDB...) sont relues chaque minute.
+const gameCache = new Map<number, { key: string; game: SteamGame | null }>();
+let cacheClearedAt = Date.now();
+const CACHE_IMAGES_MS = 60_000;
+
+function cachedGame(a: any): SteamGame | null {
+  if (!a) return null;
+  if (Date.now() - cacheClearedAt > CACHE_IMAGES_MS) {
+    gameCache.clear();
+    cacheClearedAt = Date.now();
+  }
+  const appid = Number(a.appid);
+  const key = [
+    a.display_name,
+    a.app_type,
+    a.minutes_playtime_forever,
+    a.rt_last_time_played,
+    a.rt_last_time_locally_played,
+    a.size_on_disk,
+    a.local_per_client_data?.installed,
+    detailsPlaytime.get(appid) ?? 0,
+    localVersion,
+  ].join("|");
+  const hit = gameCache.get(appid);
+  if (hit && hit.key === key) return hit.game;
+  const game = toGame(a);
+  gameCache.set(appid, { key, game });
+  return game;
+}
+
 /** Un jeu de la bibliothèque par son identifiant (null s'il est inconnu). */
 export function getGame(appid: number): SteamGame | null {
   try {
@@ -265,7 +305,7 @@ export function readLibrary(): SteamLibrary {
     if (!all) return { ...EMPTY, error: t("libraryUnavailable") };
 
     const hidden = new Set<number>(appsOf(collectionStore?.GetCollection?.("hidden")).map((a: any) => Number(a?.appid)));
-    const toGames = (apps: any[]) => apps.filter((a) => !isHidden(a, hidden)).map(toGame).filter(Boolean) as SteamGame[];
+    const toGames = (apps: any[]) => apps.filter((a) => !isHidden(a, hidden)).map(cachedGame).filter(Boolean) as SteamGame[];
     const byName = (x: SteamGame, y: SteamGame) => x.sortName.localeCompare(y.sortName, locale(), { sensitivity: "base" });
 
     const games = toGames(appsOf(all));
@@ -300,16 +340,34 @@ export function readLibrary(): SteamLibrary {
 }
 
 /** Bibliothèque relue régulièrement (installations, sessions de jeu...). */
+/** Mêmes jeux (mêmes objets, grâce au cache) dans le même ordre. */
+const sameList = (a: SteamGame[], b: SteamGame[]) => a.length === b.length && a.every((g, i) => g === b[i]);
+
+function sameLibrary(a: SteamLibrary, b: SteamLibrary): boolean {
+  return (
+    a.error === b.error &&
+    sameList(a.owned, b.owned) &&
+    sameList(a.recent, b.recent) &&
+    a.collections.length === b.collections.length &&
+    a.collections.every((c, i) => c.id === b.collections[i].id && c.name === b.collections[i].name && sameList(c.games, b.collections[i].games))
+  );
+}
+
 export function useSteamLibrary(refreshMs = 5000): SteamLibrary {
   const [library, setLibrary] = useState(readLibrary);
   useEffect(() => {
+    // Relecture ; rien n'est redessiné si rien n'a changé.
+    const update = () => setLibrary((prev) => {
+      const next = readLibrary();
+      return sameLibrary(prev, next) ? prev : next;
+    });
     // Ce qui est installé sur le Deck est relu à part (asynchrone), puis régulièrement.
     refreshLocalIndex(true);
     const iv = setInterval(() => {
       refreshLocalIndex();
-      setLibrary(readLibrary());
+      update();
     }, refreshMs);
-    const quick = setTimeout(() => setLibrary(readLibrary()), 800);
+    const quick = setTimeout(update, 800);
     return () => {
       clearInterval(iv);
       clearTimeout(quick);
