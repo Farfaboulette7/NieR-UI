@@ -158,15 +158,22 @@ function appsOf(collection: any): any[] {
   return collection?.allApps ?? collection?.visibleApps ?? [];
 }
 
+export interface SteamCollection {
+  id: string;
+  name: string;
+  games: SteamGame[];
+}
+
 export interface SteamLibrary {
   installed: SteamGame[];
   recent: SteamGame[];
-  favorites: SteamGame[];
+  /** Collections du compte (favoris en tête), comme l'onglet Collections de Steam. */
+  collections: SteamCollection[];
   /** Message si Steam n'a pas fourni sa bibliothèque. */
   error?: string;
 }
 
-const EMPTY: SteamLibrary = { installed: [], recent: [], favorites: [] };
+const EMPTY: SteamLibrary = { installed: [], recent: [], collections: [] };
 
 export function readLibrary(): SteamLibrary {
   try {
@@ -178,13 +185,27 @@ export function readLibrary(): SteamLibrary {
     const byName = (x: SteamGame, y: SteamGame) => x.sortName.localeCompare(y.sortName, "fr", { sensitivity: "base" });
 
     const games = toGames(appsOf(all));
+
+    // Approche de benderthemes (library.ts) : favoris d'abord, puis les collections de l'utilisateur.
+    const collections: SteamCollection[] = [];
+    const addCollection = (c: any) => {
+      const id = String(c?.id ?? "");
+      if (!id || id === "hidden" || collections.some((o) => o.id === id)) return;
+      const list = toGames(appsOf(c)).sort(byName);
+      if (list.length) collections.push({ id, name: String(c.displayName || id), games: list });
+    };
+    addCollection(collectionStore?.GetCollection?.("favorite"));
+    const user: any[] = [...(collectionStore?.userCollections ?? [])].sort((x: any, y: any) =>
+      String(x?.displayName ?? "").localeCompare(String(y?.displayName ?? ""), "fr", { numeric: true, sensitivity: "base" }),
+    );
+    user.forEach(addCollection);
     return {
       installed: games.filter((g) => g.installed).sort(byName),
       recent: games
         .filter((g) => g.lastPlayed > 0)
         .sort((x, y) => y.lastPlayed - x.lastPlayed)
         .slice(0, 30),
-      favorites: toGames(appsOf(collectionStore?.GetCollection?.("favorite"))).sort(byName),
+      collections,
     };
   } catch (e) {
     console.error("[NieRDeck] lecture de la bibliothèque", e);
@@ -200,6 +221,11 @@ export function useSteamLibrary(refreshMs = 5000): SteamLibrary {
     return () => clearInterval(iv);
   }, [refreshMs]);
   return library;
+}
+
+/** Ouvre la page d'un jeu dans le Magasin Steam. */
+export function openStorePage(appid: number) {
+  Navigation.NavigateToSteamWeb(`https://store.steampowered.com/app/${appid}/`);
 }
 
 /** Ouvre la page du jeu (la page NieR si elle remplace celle de Steam). */

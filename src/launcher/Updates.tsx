@@ -31,7 +31,7 @@ function isNewer(latest: string, current: string): boolean {
 }
 
 /** Dernière release GitHub, lue par le même canal que la fiche du Magasin. */
-async function getUpdateStatus(): Promise<UpdateStatus> {
+export async function getUpdateStatus(): Promise<UpdateStatus> {
   const current = await getVersion();
   try {
     const response = await fetchNoCors(RELEASES_URL, { headers: { Accept: "application/vnd.github+json" } });

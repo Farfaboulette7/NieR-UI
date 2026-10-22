@@ -6,7 +6,7 @@ Plugin [Decky Loader](https://decky.xyz) pour Steam Deck : un launcher de jeux p
 
 - `src/nier-ui/` : la couche visuelle (tokens, layout, fiche de jeu, police). Elle ne dépend que de React, pour pouvoir être réutilisée ailleurs (par exemple en mode bureau sur BazziteOS).
 - `src/launcher/` : la page du launcher côté Decky (état, données).
-- `src/index.tsx` : le point d'entrée du plugin (route `/nierdeck` et bouton dans le menu d'accès rapide).
+- `src/index.tsx` : le point d'entrée du plugin (remplacement de l'accueil et de la page de jeu, réglages dans le menu d'accès rapide).
 
 ## Installation sur le Steam Deck
 

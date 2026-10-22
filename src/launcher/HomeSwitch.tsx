@@ -10,5 +10,5 @@ import { useSettings } from "./settings";
 export function HomeSwitch({ original }: { original: ReactNode }) {
   const [settings, loaded] = useSettings();
   if (!loaded || !settings.replaceHome) return <>{original}</>;
-  return <LauncherPage mode="home" />;
+  return <LauncherPage />;
 }

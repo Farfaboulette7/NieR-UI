@@ -1,15 +1,12 @@
-import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
+import { PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
-import { LauncherPage } from "./launcher/LauncherPage";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
 import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
-import { useInputDiagnostic } from "./launcher/rightScroll";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 
-const ROUTE = "/nierdeck";
 const HOME_ROUTE = "/library/home";
 const GAME_ROUTE = "/library/app/:appid";
 
@@ -18,21 +15,6 @@ const NierIcon = () => (
     <path d="M2 12 8 6l14 6-14 6Zm6-1.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" />
   </svg>
 );
-
-/** Ouvre le launcher sans jamais en créer un second : s'il remplace l'accueil, on y retourne. */
-function openLauncher() {
-  Navigation.CloseSideMenus();
-  Navigation.Navigate(getSettings().replaceHome ? HOME_ROUTE : ROUTE);
-}
-
-function StandalonePage() {
-  const [settings] = useSettings();
-  // Garde-fou si la page est atteinte autrement (historique) alors que l'accueil est déjà remplacé.
-  useEffect(() => {
-    if (settings.replaceHome) Navigation.Navigate(HOME_ROUTE);
-  }, [settings.replaceHome]);
-  return settings.replaceHome ? null : <LauncherPage mode="standalone" />;
-}
 
 /** Liste des fenêtres habillées, rafraîchie tant que le panneau est ouvert. */
 function useThemedWindows(): string {
@@ -47,7 +29,6 @@ function useThemedWindows(): string {
 function QuickAccessPanel() {
   const [settings, loaded] = useSettings();
   const windows = useThemedWindows();
-  const input = useInputDiagnostic();
   // Ce panneau est affiché dans la fenêtre d'accès rapide : on la signale au thème.
   const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => registerSteamDocument(anchor.current?.ownerDocument), []);
@@ -86,20 +67,9 @@ function QuickAccessPanel() {
           onChange={(on) => updateSettings({ themeSteamMenus: on })}
         />
       </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem layout="below" description="Affiche le launcher au style YoRHA." onClick={openLauncher}>
-          Ouvrir NieRDeck
-        </ButtonItem>
-      </PanelSectionRow>
     </PanelSection>
     <UpdatesSection />
-    <PanelSection title="Diagnostic manette">
-      <PanelSectionRow>
-        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-          Ouvre une page de jeu, bouge le stick droit, puis reviens ici : {input}
-        </div>
-      </PanelSectionRow>
-    </PanelSection>
+
     </>
   );
 }
@@ -115,8 +85,6 @@ export default definePlugin(() => {
   void loadSettings();
   // Laisse Steam finir de démarrer avant d'interroger GitHub.
   const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
-
-  routerHook.addRoute(ROUTE, StandalonePage, { exact: true });
 
   // L'accueil Steam est enveloppé dans HomeSwitch, qui choisit selon le réglage.
   const homePatch = routerHook.addPatch(HOME_ROUTE, (props: any) => {
@@ -149,7 +117,6 @@ export default definePlugin(() => {
       stopSync();
       clearTimeout(updateTimer);
       setSteamMenuTheme(false);
-      routerHook.removeRoute(ROUTE);
       routerHook.removePatch(HOME_ROUTE, homePatch);
       routerHook.removePatch(GAME_ROUTE, gamePatch);
     },

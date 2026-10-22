@@ -10,7 +10,7 @@ export interface NierSettings {
   replaceGamePage: boolean;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: false, themeSteamMenus: true, replaceGamePage: true };
+const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");

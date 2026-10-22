@@ -24,7 +24,7 @@ export function NierStatus({ time, battery }: { time: string; battery?: NierBatt
   );
 }
 
-export type NierButton = "A" | "B" | "X" | "Y" | "L1" | "R1" | "STEAM" | "QAM";
+export type NierButton = "A" | "B" | "X" | "Y" | "L1" | "R1" | "STEAM" | "QAM" | "UPDOWN";
 
 const GLYPH: Record<NierButton, string> = {
   A: "A",
@@ -35,6 +35,7 @@ const GLYPH: Record<NierButton, string> = {
   R1: "R1",
   STEAM: "STEAM",
   QAM: "···",
+  UPDOWN: "↕",
 };
 
 const SHAPE: Record<NierButton, "round" | "bumper" | "pill"> = {
@@ -46,6 +47,7 @@ const SHAPE: Record<NierButton, "round" | "bumper" | "pill"> = {
   R1: "bumper",
   STEAM: "pill",
   QAM: "pill",
+  UPDOWN: "round",
 };
 
 export function NierHint({ button, label }: { button: NierButton | NierButton[]; label: string }) {

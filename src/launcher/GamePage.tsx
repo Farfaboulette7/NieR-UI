@@ -87,7 +87,14 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
   const time = useClock();
   const battery = useBattery();
   const game = useGame(appid);
-  const [itemId, setItemId] = useState<ItemId>("play");
+  const [itemId, setItemIdState] = useState<ItemId>("play");
+  // La zone de droite a la main : haut/bas la font défiler, B ou gauche rend la main au menu.
+  const [panelFocus, setPanelFocus] = useState(false);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const setItemId = (id: ItemId) => {
+    setItemIdState(id);
+    setPanelFocus(false);
+  };
   const achievements = useAchievements(game);
   const store = useStoreInfo(game, itemId === "info");
 
@@ -102,11 +109,11 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
 
   const items: { id: ItemId; label: string; badge?: string; hint?: string }[] = [
     { id: "play", label: game.installed ? "Jouer" : "Installer", hint: game.installed ? "Lancer" : "Installer" },
-    { id: "info", label: "Informations" },
+    { id: "info", label: "Informations", hint: "Parcourir" },
     // Un jeu non-Steam n'a en général pas de succès : pas d'entrée vide.
     ...(game.shortcut && !achievements.total
       ? []
-      : [{ id: "achievements" as const, label: "Succès", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
+      : [{ id: "achievements" as const, label: "Succès", hint: "Parcourir", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
     { id: "steam", label: "Page Steam d'origine", hint: "Ouvrir" },
   ];
   const current = items.find((i) => i.id === itemId) ?? items[0];
@@ -118,11 +125,27 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
     } else if (id === "steam") {
       onOriginal();
     } else {
-      setItemId(id);
+      setItemIdState(id);
+      setPanelFocus(true);
     }
   };
+  const browsable = current.id === "info" || current.id === "achievements";
 
   actionRef.current = (action: NierAction, repeat: boolean): boolean => {
+    if (panelFocus) {
+      switch (action) {
+        case "up":
+        case "down":
+          detailRef.current?.scrollBy({ top: action === "up" ? -90 : 90, behavior: repeat ? "auto" : "smooth" });
+          return true;
+        case "left":
+        case "back":
+          setPanelFocus(false);
+          return true;
+        default:
+          return true;
+      }
+    }
     const index = items.indexOf(current);
     switch (action) {
       case "up":
@@ -131,6 +154,9 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
         return true;
       case "confirm":
         activate(current.id);
+        return true;
+      case "right":
+        if (browsable) setPanelFocus(true);
         return true;
       case "back":
         onBack();
@@ -210,9 +236,11 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
       menuTitle="Menu du jeu"
       menuItems={items.map(({ id, label, badge }) => ({ id, label, badge }))}
       activeItemId={current.id}
-      onItemSelect={(id) => setItemId(id as ItemId)}
+      onItemSelect={(id) => id !== current.id && setItemId(id as ItemId)}
       onItemActivate={(id) => activate(id as ItemId)}
       detailTitle={current.id === "play" ? game.name : current.label}
+      detailFocused={panelFocus}
+      detailRef={detailRef}
       footerStart={
         <>
           <NierHint button="STEAM" label="Menu" />
@@ -220,10 +248,17 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
         </>
       }
       footer={
-        <>
-          {confirmHint && <NierHint button={confirmHint.button} label={confirmHint.label} />}
-          <NierHint button="B" label="Retour" />
-        </>
+        panelFocus ? (
+          <>
+            <NierHint button="UPDOWN" label="Défiler" />
+            <NierHint button="B" label="Menu du jeu" />
+          </>
+        ) : (
+          <>
+            {confirmHint && <NierHint button={confirmHint.button} label={confirmHint.label} />}
+            <NierHint button="B" label="Retour" />
+          </>
+        )
       }
     >
       {detail}

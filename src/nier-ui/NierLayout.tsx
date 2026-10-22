@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { NIER_TOKENS_CSS, type NierTheme } from "./tokens";
 import { NIER_LAYOUT_CSS } from "./layoutStyles";
 import { NIER_FONTS_CSS } from "./fonts";
@@ -41,6 +41,10 @@ export interface NierLayoutProps {
 
   /** Bandeau sombre au-dessus de la zone de détail. */
   detailTitle?: string;
+  /** La zone de droite a la main (défilement) : elle est encadrée, le menu s'estompe. */
+  detailFocused?: boolean;
+  /** Élément défilant de la zone de droite, pour que l'hôte le fasse défiler. */
+  detailRef?: Ref<HTMLDivElement>;
   /** Contenu de la zone de droite (miniature, infos du jeu...). */
   children?: ReactNode;
   /** Aides de commandes, à gauche et à droite du pied de page. */
@@ -67,6 +71,8 @@ export function NierLayout({
   onItemSelect,
   onItemActivate,
   detailTitle,
+  detailFocused = false,
+  detailRef,
   children,
   footerStart,
   footer,
@@ -139,10 +145,10 @@ export function NierLayout({
           </ul>
         </nav>
 
-        <section className="nier-detail">
+        <section className="nier-detail" data-focused={detailFocused}>
           {detailTitle && <div className="nier-detail-header">{detailTitle}</div>}
           {/* La clé rejoue l'animation d'entrée à chaque changement d'item. */}
-          <div className="nier-detail-content" key={activeItemId}>
+          <div className="nier-detail-content" key={activeItemId} ref={detailRef}>
             {children}
           </div>
         </section>

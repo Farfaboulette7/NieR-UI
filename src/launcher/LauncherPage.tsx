@@ -1,56 +1,71 @@
 import { Navigation } from "@decky/ui";
-import { useEffect, useRef, useState } from "react";
-import { NierGameDetail, NierHint, NierLayout, NierSlideOver, NierStatus } from "../nier-ui";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { NierGameDetail, NierHint, NierLayout, NierSlideOver, NierStatus, type NierMenuItem } from "../nier-ui";
 import { GamePanel, openOriginalPage } from "./GamePage";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
-import { getSettings } from "./settings";
 import { NierScreen } from "./NierScreen";
-import { formatLastPlayed, formatPlaytime, formatSize, openGamePage, useSteamLibrary, type SteamGame, type SteamLibrary } from "./steamLibrary";
+import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
+import {
+  formatLastPlayed,
+  formatPlaytime,
+  formatSize,
+  openGamePage,
+  openStorePage,
+  useSteamLibrary,
+  type SteamCollection,
+  type SteamGame,
+} from "./steamLibrary";
+import { getUpdateStatus, installUpdate, type UpdateStatus } from "./Updates";
 import { useBattery, useClock } from "./useSystemStatus";
+import { useWishlist, type Wishlist } from "./wishlist";
 
 // Côté Decky : cette page possède l'état, les données et l'entrée manette ;
-// nier-ui ne fait que dessiner.
+// nier-ui ne fait que dessiner. Affichée à la place de l'accueil Steam.
 
-/** "home" : à la place de l'accueil Steam. "standalone" : page ouverte depuis l'accès rapide. */
-export type LauncherMode = "home" | "standalone";
-
-interface Tab {
-  id: string;
-  label: string;
-  menuTitle: string;
-  games: (lib: SteamLibrary) => SteamGame[];
-  empty: string;
-}
-
-const TABS: Tab[] = [
-  { id: "library", label: "Bibliothèque", menuTitle: "Jeux installés", games: (l) => l.installed, empty: "Aucun jeu installé." },
-  { id: "recent", label: "Récents", menuTitle: "Joués récemment", games: (l) => l.recent, empty: "Aucune session de jeu récente." },
-  { id: "collections", label: "Collections", menuTitle: "Favoris", games: (l) => l.favorites, empty: "Aucun favori. Ajoute des jeux aux favoris dans Steam." },
-  { id: "store", label: "Boutique", menuTitle: "Liste de souhaits", games: () => [], empty: "Bientôt disponible." },
-  { id: "system", label: "Système", menuTitle: "Paramètres", games: () => [], empty: "Bientôt disponible." },
+const TABS = [
+  { id: "library", label: "Bibliothèque" },
+  { id: "recent", label: "Récents" },
+  { id: "collections", label: "Collections" },
+  { id: "store", label: "Boutique" },
+  { id: "system", label: "Système" },
 ];
 
-// Sélection mémorisée : on la retrouve en revenant de la page d'un jeu.
-const remembered: { tabId: string; itemId?: string } = { tabId: TABS[0].id };
+// Sélection mémorisée : on la retrouve en revenant d'une autre page Steam.
+const remembered: { tabId: string; items: Record<string, string | undefined>; collectionId?: string } = {
+  tabId: TABS[0].id,
+  items: {},
+};
 
-export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
+/** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
+interface TabView {
+  menuTitle: string;
+  items: NierMenuItem[];
+  /** Zone de droite pour l'item sélectionné (undefined si la liste est vide). */
+  detail: (id: string | undefined) => { title: string; content: ReactNode };
+  activate: (id: string) => void;
+  /** Libellé de A pour l'item sélectionné ; rien = pas d'aide. */
+  hint?: (id: string) => string | undefined;
+  /** B dans l'onglet (sortir d'une collection...). true si pris en charge. */
+  back?: () => boolean;
+}
+
+export function LauncherPage() {
   const time = useClock();
   const battery = useBattery();
   const library = useSteamLibrary();
+  const [settings] = useSettings();
 
   const [tabId, setTabIdState] = useState(remembered.tabId);
-  const tab = TABS.find((t) => t.id === tabId) ?? TABS[0];
-  const games = tab.games(library);
-  const [itemId, setItemIdState] = useState(remembered.itemId);
+  const [items, setItems] = useState(remembered.items);
+  const [collectionId, setCollectionIdState] = useState(remembered.collectionId);
+  // Une collection ouverte a sa propre sélection.
+  const tabKey = tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId;
   const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
-  const setItemId = (id: string | undefined) => setItemIdState((remembered.itemId = id));
-  // Par défaut (ou si le jeu a disparu de la liste) : le premier.
-  const game = games.find((g) => String(g.appid) === itemId) ?? games[0];
+  const setItemId = (id: string | undefined) => setItems((remembered.items = { ...remembered.items, [tabKey]: id }));
+  const setCollectionId = (id: string | undefined) => setCollectionIdState((remembered.collectionId = id));
 
-  const changeTab = (id: string) => {
-    setTabId(id);
-    setItemId(undefined);
-  };
+  const wishlist = useWishlist(tabId === "store");
+  const updates = useUpdateStatus(tabId === "system");
 
   // Page du jeu glissée par-dessus le launcher (sans changer de page Steam),
   // pour qu'elle arrive de la droite et reparte vers la droite.
@@ -64,60 +79,76 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
     return () => clearTimeout(t);
   }, [overlay?.closing]);
 
-  const open = (target: SteamGame) => {
+  const openGame = (game: SteamGame) => {
     // Page NieR désactivée : on va sur la page Steam.
-    if (getSettings().replaceGamePage) setOverlay({ appid: target.appid, closing: false });
-    else openGamePage(target);
+    if (getSettings().replaceGamePage) setOverlay({ appid: game.appid, closing: false });
+    else openGamePage(game);
   };
 
-  const launch = (id: string) => {
-    const target = games.find((g) => String(g.appid) === id);
-    if (target) open(target);
-  };
+  // ───── Contenu de l'onglet courant ─────
+  let view: TabView;
+  if (tabId === "library") {
+    view = gamesView("Jeux installés", library.installed, library.error ?? "Aucun jeu installé.", openGame);
+  } else if (tabId === "recent") {
+    view = gamesView("Joués récemment", library.recent, library.error ?? "Aucune session de jeu récente.", openGame);
+  } else if (tabId === "collections") {
+    const collection = library.collections.find((c) => c.id === collectionId);
+    view = collection
+      ? gamesView(collection.name, collection.games, "Collection vide.", openGame, () => {
+          setCollectionId(undefined);
+          return true;
+        })
+      : collectionsView(library.collections, setCollectionId);
+  } else if (tabId === "store") {
+    view = wishlistView(wishlist);
+  } else {
+    view = systemView(settings, updates);
+  }
+
+  const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
+  const detail = view.detail(current?.id);
+  const hint = current && view.hint?.(current.id);
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
     if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
-    const index = game ? games.indexOf(game) : 0;
+    const list = view.items;
+    const index = current ? list.indexOf(current) : 0;
     switch (action) {
       case "up":
       case "down":
         // Boucle sur un appui simple ; s'arrête aux bords quand le bouton est maintenu.
-        if (games.length) setItemId(String(games[stepIndex(index, action === "up" ? -1 : 1, games.length, !repeat)].appid));
+        if (list.length) setItemId(list[stepIndex(index, action === "up" ? -1 : 1, list.length, !repeat)].id);
         return true;
       case "prevTab":
       case "nextTab": {
-        const t = TABS.indexOf(tab);
-        changeTab(TABS[stepIndex(t, action === "prevTab" ? -1 : 1, TABS.length, true)].id);
+        const t = TABS.findIndex((x) => x.id === tabId);
+        setTabId(TABS[stepIndex(t, action === "prevTab" ? -1 : 1, TABS.length, true)].id);
         return true;
       }
       case "confirm":
-        if (game) open(game);
+        if (current) view.activate(current.id);
         return true;
       case "back":
-        if (mode === "standalone") {
-          Navigation.NavigateBack();
-          return true;
-        }
-        return false; // sur l'accueil, Steam garde la main
+        return view.back?.() ?? false; // sur l'accueil, Steam garde la main
       default:
         return true; // gauche/droite : rien pour l'instant, mais on garde le focus
     }
   };
 
   return (
-    // Plein écran. En mode accueil, on reste sous les autres pages Steam (z-index bas).
-    <NierScreen zIndex={mode === "standalone" ? 900 : 1} onAction={onAction}>
+    // Plein écran, sous les autres pages Steam (z-index bas).
+    <NierScreen zIndex={1} onAction={onAction}>
       <NierLayout
         tabs={TABS}
-        activeTabId={tab.id}
-        onTabChange={changeTab}
+        activeTabId={tabId}
+        onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
-        menuTitle={`${tab.menuTitle}${games.length ? ` · ${games.length}` : ""}`}
-        menuItems={games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true) }))}
-        activeItemId={game ? String(game.appid) : undefined}
+        menuTitle={view.menuTitle}
+        menuItems={view.items}
+        activeItemId={current?.id}
         onItemSelect={setItemId}
-        onItemActivate={launch}
-        detailTitle={game?.name ?? tab.label}
+        onItemActivate={view.activate}
+        detailTitle={detail.title}
         footerStart={
           <>
             <NierHint button="STEAM" label="Menu" />
@@ -127,36 +158,227 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
         footer={
           <>
             <NierHint button={["L1", "R1"]} label="Onglets" />
-            {game && <NierHint button="A" label="Ouvrir" />}
-            {mode === "standalone" && <NierHint button="B" label="Retour" />}
+            {hint && <NierHint button="A" label={hint} />}
+            {view.back && <NierHint button="B" label="Retour" />}
           </>
         }
       >
-        {game ? (
-          <NierGameDetail
-            image={game.banners}
-            imageAlt={game.name}
-            fields={[
-              { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
-              { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
-              { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
-              { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
-            ]}
-          />
-        ) : (
-          <NierGameDetail description={library.error ?? tab.empty} />
-        )}
+        {detail.content}
       </NierLayout>
       {overlay && (
         <NierSlideOver closing={overlay.closing} onClosed={() => setOverlay(null)}>
-          <GamePanel
-            appid={overlay.appid}
-            onBack={closeOverlay}
-            onOriginal={() => openOriginalPage(overlay.appid)}
-            actionRef={overlayAction}
-          />
+          <GamePanel appid={overlay.appid} onBack={closeOverlay} onOriginal={() => openOriginalPage(overlay.appid)} actionRef={overlayAction} />
         </NierSlideOver>
       )}
     </NierScreen>
   );
+}
+
+// ───────────── Vues des onglets ─────────────
+
+function gameDetail(game: SteamGame): ReactNode {
+  return (
+    <NierGameDetail
+      image={game.banners}
+      imageAlt={game.name}
+      fields={[
+        { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
+        { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
+        { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
+        { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
+      ]}
+    />
+  );
+}
+
+/** Onglet listant des jeux : A ouvre la page du jeu. */
+function gamesView(title: string, games: SteamGame[], empty: string, open: (g: SteamGame) => void, back?: () => boolean): TabView {
+  const find = (id?: string) => games.find((g) => String(g.appid) === id);
+  return {
+    menuTitle: `${title}${games.length ? ` · ${games.length}` : ""}`,
+    items: games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true) })),
+    detail: (id) => {
+      const game = find(id);
+      return game ? { title: game.name, content: gameDetail(game) } : { title, content: <NierGameDetail art={false} description={empty} /> };
+    },
+    activate: (id) => {
+      const game = find(id);
+      if (game) open(game);
+    },
+    hint: () => "Ouvrir",
+    back,
+  };
+}
+
+function collectionsView(collections: SteamCollection[], open: (id: string) => void): TabView {
+  const find = (id?: string) => collections.find((c) => c.id === id);
+  return {
+    menuTitle: `Collections${collections.length ? ` · ${collections.length}` : ""}`,
+    items: collections.map((c) => ({ id: c.id, label: c.name, badge: String(c.games.length) })),
+    detail: (id) => {
+      const c = find(id);
+      if (!c) return { title: "Collections", content: <NierGameDetail art={false} description="Aucune collection. Crée-en dans la bibliothèque Steam." /> };
+      const playtime = c.games.reduce((sum, g) => sum + g.playtime, 0);
+      const recent = [...c.games].sort((x, y) => y.lastPlayed - x.lastPlayed)[0];
+      return {
+        title: c.name,
+        content: (
+          <NierGameDetail
+            image={(recent ?? c.games[0])?.banners}
+            imageAlt={c.name}
+            fields={[
+              { label: "Jeux", value: String(c.games.length) },
+              { label: "Installés", value: String(c.games.filter((g) => g.installed).length) },
+              { label: "Temps de jeu", value: formatPlaytime(playtime) },
+              { label: "Dernier joué", value: recent && recent.lastPlayed ? recent.name : "—" },
+            ]}
+          />
+        ),
+      };
+    },
+    activate: open,
+    hint: () => "Ouvrir",
+  };
+}
+
+function wishlistView(wishlist: Wishlist): TabView {
+  const find = (id?: string) => wishlist.items.find((w) => String(w.appid) === id);
+  const empty = wishlist.loading
+    ? "Chargement de la liste de souhaits…"
+    : wishlist.error
+      ? `Liste de souhaits indisponible (${wishlist.error}).`
+      : "Liste de souhaits vide, ou privée. Pour qu'elle apparaisse : profil Steam → Confidentialité → Détails des jeux → Public.";
+  return {
+    menuTitle: `Liste de souhaits${wishlist.items.length ? ` · ${wishlist.items.length}` : ""}`,
+    items: wishlist.items.map((w) => ({ id: String(w.appid), label: w.name, badge: w.discount ? `-${w.discount}%` : w.price || undefined })),
+    detail: (id) => {
+      const w = find(id);
+      if (!w) return { title: "Boutique", content: <NierGameDetail art={false} description={empty} /> };
+      return {
+        title: w.name,
+        content: (
+          <NierGameDetail
+            image={w.images}
+            imageAlt={w.name}
+            fields={[
+              { label: "Prix", value: w.price ? (w.discount ? `${w.price} (-${w.discount} %)` : w.price) : "—" },
+              { label: "Sortie", value: w.releaseDate || "—" },
+            ]}
+          />
+        ),
+      };
+    },
+    activate: (id) => openStorePage(Number(id)),
+    hint: () => "Magasin",
+  };
+}
+
+// ───────────── Système : réglages de l'extension ─────────────
+
+const TOGGLES: { id: keyof NierSettings; label: string; description: string }[] = [
+  {
+    id: "replaceHome",
+    label: "Lancer au démarrage",
+    description: "Affiche NieRDeck à la place de l'accueil Steam, dès le démarrage du mode Gaming. Désactivé, l'accueil Steam revient.",
+  },
+  {
+    id: "replaceGamePage",
+    label: "Page de jeu NieR",
+    description: "Remplace la page d'un jeu Steam par la page NieR (Jouer, Informations, Succès).",
+  },
+  {
+    id: "themeSteamMenus",
+    label: "Thème NieR de Steam",
+    description: "Habille le menu STEAM, l'accès rapide, les boîtes de dialogue et les pages de jeu aux couleurs YoRHA.",
+  },
+];
+
+interface UpdateState {
+  status: UpdateStatus | null;
+  checking: boolean;
+  check: () => Promise<void>;
+}
+
+function useUpdateStatus(enabled: boolean): UpdateState {
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const check = async () => {
+    setChecking(true);
+    try {
+      setStatus(await getUpdateStatus());
+    } catch (e) {
+      console.error("[NieRDeck] vérification des mises à jour", e);
+    } finally {
+      setChecking(false);
+    }
+  };
+  useEffect(() => {
+    if (enabled && !status && !checking) void check();
+  }, [enabled]);
+  return { status, checking, check };
+}
+
+function systemView(settings: NierSettings, updates: UpdateState): TabView {
+  const status = updates.status;
+  const isToggle = (id: string) => TOGGLES.find((t) => t.id === id);
+  return {
+    menuTitle: "Paramètres",
+    items: [
+      ...TOGGLES.map((t) => ({ id: t.id, label: t.label, badge: settings[t.id] ? "Oui" : "Non" })),
+      { id: "updates", label: "Mises à jour", badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
+      { id: "steam", label: "Paramètres Steam" },
+    ],
+    detail: (id) => {
+      const toggle = id ? isToggle(id) : undefined;
+      if (toggle) {
+        return {
+          title: toggle.label,
+          content: (
+            <NierGameDetail
+              art={false}
+              fields={[{ label: "État", value: settings[toggle.id] ? "Activé" : "Désactivé" }]}
+              description={toggle.description}
+            />
+          ),
+        };
+      }
+      if (id === "updates") {
+        return {
+          title: "Mises à jour",
+          content: (
+            <NierGameDetail
+              art={false}
+              fields={[
+                { label: "Installée", value: status?.current ?? "…" },
+                { label: "Dernière", value: updates.checking ? "Vérification…" : (status?.latest ?? "—") },
+              ]}
+              description={
+                status?.error
+                  ? `Impossible de joindre GitHub (${status.error}).`
+                  : status?.available
+                    ? "A : installer la nouvelle version (Decky demande une confirmation)."
+                    : "NieRDeck est à jour. A : vérifier à nouveau."
+              }
+            />
+          ),
+        };
+      }
+      return {
+        title: "Paramètres Steam",
+        content: <NierGameDetail art={false} description="Ouvre les paramètres du Steam Deck : réseau, affichage, son, contrôleur…" />,
+      };
+    },
+    activate: (id) => {
+      const toggle = isToggle(id);
+      if (toggle) {
+        updateSettings({ [toggle.id]: !settings[toggle.id] });
+      } else if (id === "updates") {
+        if (status?.available) installUpdate(status).catch((e) => console.error("[NieRDeck] mise à jour", e));
+        else void updates.check();
+      } else if (id === "steam") {
+        Navigation.Navigate("/settings");
+      }
+    },
+    hint: (id) => (isToggle(id) ? "Changer" : id === "updates" ? (status?.available ? "Installer" : "Vérifier") : "Ouvrir"),
+  };
 }
