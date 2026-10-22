@@ -19,6 +19,8 @@ interface MediaInfo {
   base: string | null;
   sfx: Record<string, string>;
   sfxDir: string | null;
+  /** Nom du pack de bruitages trouvé (Audio Loader). */
+  sfxPack?: string | null;
   music: MusicTrack[];
   musicDir: string;
   error?: string;

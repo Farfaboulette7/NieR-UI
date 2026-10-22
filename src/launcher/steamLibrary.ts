@@ -131,6 +131,7 @@ interface LocalIndex {
 }
 
 let localIndex: LocalIndex | null = null;
+let localError = "";
 let localAsk: Promise<void> | null = null;
 let localAt = 0;
 const LOCAL_REFRESH_MS = 30_000;
@@ -162,8 +163,20 @@ export function refreshLocalIndex(force = false) {
       if (index.steam.size || !localIndex?.steam.size) localIndex = index;
       localAt = Date.now();
     })
-    .catch((e) => console.error("[NieRDeck] jeux installés sur le Deck", e))
+    .catch((e) => {
+      localError = String(e?.message ?? e);
+      console.error("[NieRDeck] jeux installés sur le Deck", e);
+    })
     .finally(() => (localAsk = null));
+}
+
+/** Pour Système → Diagnostic : ce que NieRDeck sait des jeux présents sur le Deck. */
+export function libraryDiagnostic(): { steam: string; shortcuts: string } {
+  if (!localIndex) return { steam: localError || "…", shortcuts: localError || "…" };
+  return {
+    steam: String(localIndex.steam.size),
+    shortcuts: localIndex.shortcuts ? String(localIndex.shortcuts.size) : "—",
+  };
 }
 
 function installedHere(a: any, appid: number, shortcut: boolean): boolean {

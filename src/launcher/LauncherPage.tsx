@@ -4,6 +4,8 @@ import { NierGameDetail, NierHint, NierIntro, NierLayout, NierMeter, NierOptionL
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
+import { setupNierSounds, useSfxSetup } from "./sfxSetup";
+import { hasSteamGridDb } from "./collections";
 import { LANGS, t, type StringKey } from "./i18n";
 import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
@@ -13,6 +15,7 @@ import {
   formatLastPlayed,
   formatPlaytime,
   formatSize,
+  libraryDiagnostic,
   openGamePage,
   openStorePage,
   useSteamLibrary,
@@ -125,6 +128,7 @@ export function LauncherPage() {
   const updates = useUpdateStatus(tabId === "system");
   const media = useMedia();
   const nowPlaying = useNowPlaying(tabId === "system");
+  const sfxSetup = useSfxSetup();
   // Liste de la zone de droite qui a la main (ex. les morceaux), et sa ligne sélectionnée.
   const [panel, setPanel] = useState<{ tabKey: string; itemId: string; row: string } | null>(null);
 
@@ -179,7 +183,7 @@ export function LauncherPage() {
   } else if (tabId === "store") {
     view = wishlistView(wishlist);
   } else {
-    view = systemView(settings, updates, media, nowPlaying);
+    view = systemView(settings, updates, media, nowPlaying, sfxSetup);
   }
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
@@ -231,7 +235,8 @@ export function LauncherPage() {
   const onAction = (action: NierAction, repeat: boolean): boolean => {
     if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
     if (panelRow !== undefined && onPanelAction(action, repeat)) return true;
-    if (current && panelDef?.rows.length && (action === "confirm" || action === "right")) {
+    // → entre dans le panneau, sauf sur un item réglable (volume) où il sert à régler.
+    if (current && panelDef?.rows.length && (action === "confirm" || (action === "right" && !view.adjustable?.(current.id)))) {
       playSfx("focus");
       setPanel({ tabKey, itemId: current.id, row: panelDef.initial ?? panelDef.rows[0] });
       return true;
@@ -471,7 +476,13 @@ const VOLUMES: { id: "sfxVolume" | "musicVolume"; label: StringKey }[] = [
 
 type Media = ReturnType<typeof useMedia>;
 
-function systemView(settings: NierSettings, updates: UpdateState, media: Media, now: NowPlaying): TabView {
+function systemView(
+  settings: NierSettings,
+  updates: UpdateState,
+  media: Media,
+  now: NowPlaying,
+  sfxSetup: ReturnType<typeof useSfxSetup>,
+): TabView {
   const status = updates.status;
   const isToggle = (id: string) => TOGGLES.find((t) => t.id === id);
   const isVolume = (id: string) => VOLUMES.find((v) => v.id === id);
@@ -481,20 +492,36 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
   const noMusic = t("noMusic", { dir: musicDir });
   const trackLabel = (t: { number: number | null; title: string }) => `${t.number != null ? `${String(t.number).padStart(2, "0")}. ` : ""}${t.title}`;
 
-  const volumeDetail = (id: "sfxVolume" | "musicVolume"): ReactNode => {
-    const missing =
-      id === "sfxVolume"
-        ? !sfxFound && t("noSfx")
-        : !tracks.length && noMusic;
-    return (
-      <div>
-        <NierMeter label={id === "sfxVolume" ? t("sfxShort") : t("musicShort")} value={settings[id]} mutedLabel={t("muted")} />
-        <p className="nier-game-description" style={{ marginTop: 18 }}>
-          {missing || t("volumeHelp")}
-        </p>
-      </div>
-    );
-  };
+  // Bruitages absents : une ligne propose d'installer Audio Loader et son pack NieR.
+  const sfxRow = sfxSetup.loaderInstalled ? t("sfxDownloadPack") : t("sfxInstallAll");
+  const sfxStatus =
+    sfxSetup.step === "installingLoader"
+      ? t("sfxInstalling")
+      : sfxSetup.step === "downloadingPack"
+        ? t("sfxDownloading")
+        : sfxSetup.step === "error"
+          ? t("sfxError", { error: sfxSetup.error })
+          : sfxFound
+            ? t("sfxPackInUse", { name: media?.sfxPack ?? "Audio Loader" })
+            : t("noSfx");
+
+  const volumeDetail = (id: "sfxVolume" | "musicVolume", row?: string): ReactNode => (
+    <div>
+      <NierMeter label={id === "sfxVolume" ? t("sfxShort") : t("musicShort")} value={settings[id]} mutedLabel={t("muted")} />
+      <p className="nier-game-description" style={{ marginTop: 18 }}>
+        {id === "musicVolume" && !tracks.length ? noMusic : t("volumeHelp")}
+      </p>
+      {id === "sfxVolume" && (
+        <>
+          <div className="nier-options-title">{t("sfxSource")}</div>
+          <p className="nier-game-description" style={{ marginBottom: 12 }}>
+            {sfxStatus}
+          </p>
+          {!sfxFound && <NierOptionList options={[{ id: "install", label: sfxRow }]} selectedId={row} />}
+        </>
+      )}
+    </div>
+  );
 
   // Panneau « Musique en cours » : deux interrupteurs puis la liste des morceaux.
   const musicRows: NierOption[] = [
@@ -538,6 +565,7 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
       { id: "language", label: t("language"), badge: LANGS.find((l) => l.id === settings.language)?.label },
       { id: "updates", label: t("updates"), badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
       { id: "steam", label: t("steamSettings") },
+      { id: "diagnostic", label: t("diagnostic") },
     ],
     detail: (id, row) => {
       const toggle = id ? isToggle(id) : undefined;
@@ -554,7 +582,7 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
         };
       }
       const volume = id ? isVolume(id) : undefined;
-      if (volume) return { title: t(volume.label), content: volumeDetail(volume.id) };
+      if (volume) return { title: t(volume.label), content: volumeDetail(volume.id, row) };
       if (id === "track") return { title: t("nowPlaying"), content: musicDetail(row) };
       if (id === "language") {
         return {
@@ -590,6 +618,25 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
           ),
         };
       }
+      if (id === "diagnostic") {
+        const d = libraryDiagnostic();
+        return {
+          title: t("diagnostic"),
+          content: (
+            <NierGameDetail
+              art={false}
+              fields={[
+                { label: t("diagSteamGames"), value: d.steam },
+                { label: t("diagShortcuts"), value: d.shortcuts },
+                { label: "Audio Loader", value: sfxSetup.loaderInstalled ? t("yes") : t("no") },
+                { label: t("sfxShort"), value: media?.sfxPack ?? t("no") },
+                { label: "SteamGridDB", value: hasSteamGridDb() ? t("yes") : t("no") },
+              ]}
+              description={t("diagnosticDesc")}
+            />
+          ),
+        };
+      }
       return {
         title: t("steamSettings"),
         content: <NierGameDetail art={false} description={t("steamSettingsDesc")} />,
@@ -597,10 +644,7 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
     },
     activate: (id) => {
       const toggle = isToggle(id);
-      if (id === "sfxVolume" && !sfxFound) {
-        // Les bruitages NieR viennent d'Audio Loader : direction la boutique Decky.
-        Navigation.Navigate("/decky/store");
-      } else if (toggle) {
+      if (toggle) {
         playSfx(settings[toggle.id] ? "toggleOff" : "toggleOn");
         updateSettings({ [toggle.id]: !settings[toggle.id] });
       } else if (id === "track") {
@@ -617,7 +661,15 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
       }
     },
     panel: (id) =>
-      id === "language"
+      id === "sfxVolume" && !sfxFound
+        ? {
+            rows: ["install"],
+            activate: () => {
+              playSfx("confirm");
+              void setupNierSounds();
+            },
+          }
+        : id === "language"
         ? {
             rows: LANGS.map((l) => l.id),
             initial: settings.language,
@@ -659,7 +711,7 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
         ? t("change")
         : isVolume(id)
           ? id === "sfxVolume" && !sfxFound
-            ? t("openStore")
+            ? t("install")
             : undefined
           : id === "track"
             ? tracks.length
@@ -671,6 +723,8 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
                 ? status?.available
                   ? t("install")
                   : t("check")
-                : t("open"),
+                : id === "diagnostic"
+                  ? undefined
+                  : t("open"),
   };
 }

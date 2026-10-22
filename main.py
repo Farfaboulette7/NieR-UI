@@ -58,19 +58,21 @@ def _pack_name(folder: str) -> str:
         return os.path.basename(folder)
 
 
+# Packs NieR d'Audio Loader, du préféré au moins précis.
+_SFX_PACKS = [re.compile(r"decky automata", re.IGNORECASE), re.compile(r"yorha|nier|automata", re.IGNORECASE)]
+
+
 def _sfx_dir():
-    """Dossier du pack de bruitages NieR / YoRHa installé avec Audio Loader, ou None."""
+    """Dossier du pack de bruitages NieR installé avec Audio Loader (Decky Automata...), ou None."""
     root = os.path.join(decky.DECKY_HOME, "sounds")
-    preferred = os.path.join(root, "YoRHa Decky")
-    if os.path.isdir(preferred):
-        return preferred
     try:
-        for name in sorted(os.listdir(root)):
-            folder = os.path.join(root, name)
-            if os.path.isdir(folder) and re.search(r"yorha|nier", f"{name} {_pack_name(folder)}", re.IGNORECASE):
-                return folder
+        folders = [os.path.join(root, n) for n in sorted(os.listdir(root)) if os.path.isdir(os.path.join(root, n))]
     except OSError:
-        pass
+        return None
+    for pattern in _SFX_PACKS:
+        for folder in folders:
+            if pattern.search(f"{os.path.basename(folder)} {_pack_name(folder)}"):
+                return folder
     return None
 
 
@@ -117,7 +119,14 @@ async def _media_info():
             if os.path.splitext(name)[1].lower() in AUDIO_EXT:
                 sfx[name] = _register(os.path.join(sfx_dir, name))
     music = await asyncio.get_running_loop().run_in_executor(None, _music_tracks)
-    return {"base": base, "sfx": sfx, "sfxDir": sfx_dir, "music": music, "musicDir": _music_dir()}
+    return {
+        "base": base,
+        "sfx": sfx,
+        "sfxDir": sfx_dir,
+        "sfxPack": _pack_name(sfx_dir) if sfx_dir else None,
+        "music": music,
+        "musicDir": _music_dir(),
+    }
 
 
 async def _send(writer, status: str, headers: dict, body: bytes = b""):

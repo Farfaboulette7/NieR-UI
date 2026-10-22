@@ -80,5 +80,5 @@ export function hasSteamGridDb(): boolean {
   }
 }
 
-/** Écran « Modifier les images » du plugin SteamGridDB pour ce jeu. */
-export const steamGridDbRoute = (appid: number) => `/steamgriddb/manage/${appid}`;
+/** Écran « Modifier les images » du plugin SteamGridDB pour ce jeu (sa route : /steamgriddb/:appid). */
+export const steamGridDbRoute = (appid: number) => `/steamgriddb/${appid}`;
