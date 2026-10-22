@@ -117,9 +117,32 @@ function readPlaytime(a: any, appid: number, shortcut: boolean): number {
   return 0;
 }
 
+// ───────────── Installé sur ce Deck, ou seulement sur un autre PC ─────────────
+// Avec la retransmission (Remote Play), Steam compte comme « installé » un jeu
+// présent sur un autre PC du réseau : `installed` suit le client sélectionné.
+// On ne regarde que les données de ce Deck (local_per_client_data).
+
+/** Installé sur un autre PC du réseau (retransmissible). */
+function installedElsewhere(a: any): boolean {
+  const clients: any[] = Array.isArray(a?.per_client_data) ? a.per_client_data : [];
+  return clients.some((c) => c && String(c.clientid) !== "0" && c.installed);
+}
+
+function installedHere(a: any, shortcut: boolean): boolean {
+  const local = a?.local_per_client_data;
+  if (local && typeof local.installed === "boolean") {
+    // Prudence pour les raccourcis : on ne les écarte que s'ils sont installés ailleurs.
+    return local.installed || (shortcut && !installedElsewhere(a));
+  }
+  return shortcut || !!(a?.installed ?? false);
+}
+
 function toGame(a: any): SteamGame | null {
   if (!a || (a.app_type !== APP_TYPE_GAME && a.app_type !== APP_TYPE_SHORTCUT)) return null;
   const shortcut = a.app_type === APP_TYPE_SHORTCUT;
+  const installed = installedHere(a, shortcut);
+  // Raccourci non-Steam d'un autre PC : ni installé ici, ni possédé.
+  if (shortcut && !installed) return null;
   const name = String(a.display_name ?? a.sort_as ?? a.appid);
   const appid = Number(a.appid);
   return {
@@ -129,7 +152,7 @@ function toGame(a: any): SteamGame | null {
     sortName: String(a.sort_as ?? name),
     playtime: readPlaytime(a, appid, shortcut),
     lastPlayed: firstPositive(a.rt_last_time_played, a.rt_last_time_locally_played),
-    installed: shortcut || !!(a.installed ?? a.local_per_client_data?.installed),
+    installed,
     sizeOnDisk: firstPositive(a.size_on_disk, a.local_per_client_data?.size_on_disk),
     banners: [
       ...appStoreUrls(["GetCustomLandcapeImageURLs", "GetCustomLandscapeImageURLs"], a),
@@ -239,7 +262,7 @@ export function openGamePage(game: SteamGame) {
 export function launchGame(game: SteamGame) {
   try {
     // Écran « Lancement en cours » jusqu'au démarrage : il cache l'attente et la transition de Steam.
-    startLaunchScreen(game.appid, game.name);
+    startLaunchScreen(game.appid, game.gameid, game.name);
     SteamClient.Apps.RunGame(game.gameid, "", -1, 100);
   } catch (e) {
     console.error("[NieRDeck] lancement", e);

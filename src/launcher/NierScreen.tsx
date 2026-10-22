@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react";
 import { NierStage } from "../nier-ui";
 import { nextTrack, toggleMusicPause, useMusicPresence } from "./audio";
+import { cancelLaunchIfSlow, isLaunching } from "./LaunchScreen";
 import { GamepadRoot, type NierActionHandler } from "./GamepadRoot";
 import { useHiddenSteamChrome } from "./steamChrome";
 
@@ -16,6 +17,11 @@ export function NierScreen({ zIndex, onAction, children }: { zIndex: number; onA
     <div ref={rootRef} data-nierdeck-root="" style={{ position: "fixed", inset: 0, zIndex }}>
       <GamepadRoot
         onAction={(action, repeat) => {
+          // Lancement en cours : la manette n'agit plus sur l'écran (B peut forcer l'arrêt d'un jeu qui tarde).
+          if (isLaunching()) {
+            if (action === "back" && !repeat) cancelLaunchIfSlow();
+            return true;
+          }
           // Y : pause / lecture de la musique (maintenu : morceau suivant), sur tous les écrans NieRDeck.
           if (action === "music") {
             if (!repeat) toggleMusicPause();

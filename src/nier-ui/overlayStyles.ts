@@ -142,6 +142,11 @@ export const NIER_OVERLAY_CSS = `
   background-color: var(--nier-low);
   animation: nier-launch-bar 1.4s ease-in-out infinite;
 }
+.nier-launch-hint {
+  margin-top: 16px;
+  font-size: 15px;
+  animation: nier-launch-in 300ms ease-out both;
+}
 @keyframes nier-launch-in {
   from { opacity: 0; }
   to   { opacity: 1; }

@@ -132,6 +132,7 @@ const fr = {
 
   // Lancement
   launchingHeading: "Lancement en cours",
+  forceQuit: "Forcer l'arrêt du jeu",
   launching: "Lancement : {name}",
   launchFailed: "Impossible de lancer {name}.",
 
@@ -283,6 +284,7 @@ const en: Record<StringKey, string> = {
   deckyInstallerMissing: "Decky's installer is unavailable.",
 
   launchingHeading: "Launching",
+  forceQuit: "Force quit the game",
   launching: "Launching: {name}",
   launchFailed: "Couldn't launch {name}.",
 

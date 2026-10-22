@@ -1,4 +1,4 @@
-import { Navigation } from "@decky/ui";
+import { Navigation, Router } from "@decky/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NierGameDetail, NierHint, NierIntro, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierMenuItem, type NierOption } from "../nier-ui";
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
@@ -40,8 +40,11 @@ const remembered: { tabId: string; items: Record<string, string | undefined>; co
   items: {},
 };
 
-// L'animation d'ouverture (emblème YoRHa) ne se joue qu'une fois par démarrage.
+// L'animation d'ouverture (emblème YoRHa) se joue au démarrage, puis à chaque
+// sortie de veille si le launcher est à l'écran.
 let introPlayed = false;
+
+declare const SteamClient: any;
 
 /** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
 interface TabView {
@@ -67,9 +70,26 @@ export function LauncherPage() {
   const battery = useBattery();
   const library = useSteamLibrary();
   const [settings] = useSettings();
-  const [intro, setIntro] = useState(() => !introPlayed);
+  // Clé de l'animation : la changer la rejoue depuis le début.
+  const [intro, setIntro] = useState<number | null>(() => (introPlayed ? null : 0));
   useEffect(() => {
     introPlayed = true;
+    let reg: any = null;
+    try {
+      reg = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(() => {
+        // Pas pendant un jeu : le launcher n'est pas visible.
+        if (!Router.MainRunningApp) setIntro(Date.now());
+      });
+    } catch (e) {
+      console.error("[NieRDeck] sortie de veille", e);
+    }
+    return () => {
+      try {
+        reg?.unregister?.();
+      } catch {
+        /* déjà libéré */
+      }
+    };
   }, []);
 
   const [tabId, setTabIdState] = useState(remembered.tabId);
@@ -270,7 +290,7 @@ export function LauncherPage() {
       >
         {detail.content}
       </NierLayout>
-      {intro && <NierIntro onDone={() => setIntro(false)} />}
+      {intro !== null && <NierIntro key={intro} onDone={() => setIntro(null)} />}
       {overlay && (
         <NierSlideOver closing={overlay.closing} instant={overlay.instant} onClosed={() => setOverlay(null)}>
           <GamePanel
