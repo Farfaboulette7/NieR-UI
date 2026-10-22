@@ -8,9 +8,13 @@ export interface NierSettings {
   themeSteamMenus: boolean;
   /** Remplacer la page d'un jeu Steam par la page NieR. */
   replaceGamePage: boolean;
+  /** Volume des bruitages, 0 à 100. */
+  sfxVolume: number;
+  /** Volume de la musique de fond, 0 à 100. */
+  musicVolume: number;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true };
+const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true, sfxVolume: 60, musicVolume: 40 };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");
@@ -20,7 +24,20 @@ let loaded = false;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
-export const getSettings = () => current;
+// Pendant une mise à jour, l'accueil et la page de jeu NieR sont rendus à Steam (sans toucher aux
+// réglages enregistrés) : l'installateur de Decky reste sinon bloqué.
+let suspended = false;
+const SUSPENDED: Partial<NierSettings> = { replaceHome: false, replaceGamePage: false };
+const effective = () => (suspended ? { ...current, ...SUSPENDED } : current);
+
+export const getSettings = () => effective();
+
+/** Coupe (ou rétablit) le remplacement de l'accueil et de la page de jeu ; le thème reste. */
+export function suspendEffects(on: boolean) {
+  if (suspended === on) return;
+  suspended = on;
+  emit();
+}
 
 /** Écoute les changements hors de React. Retourne la fonction de désabonnement. */
 export function onSettingsChange(listener: () => void): () => void {
@@ -52,5 +69,5 @@ export function updateSettings(patch: Partial<NierSettings>) {
 export function useSettings(): [NierSettings, boolean] {
   const [, setRev] = useState(0);
   useEffect(() => onSettingsChange(() => setRev((r) => r + 1)), []);
-  return [current, loaded];
+  return [effective(), loaded];
 }

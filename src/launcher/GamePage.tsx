@@ -3,8 +3,9 @@
 // à droite : l'image du jeu ou le contenu de l'entrée sélectionnée.
 import { Navigation, useParams } from "@decky/ui";
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierStatus, type NierButton } from "../nier-ui";
-import { useAchievements, useStoreInfo } from "./gameDetails";
+import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierPeopleList, NierStatus, type NierButton } from "../nier-ui";
+import { playSfx } from "./audio";
+import { useAchievements, useFriendsWhoPlayed, useStoreInfo } from "./gameDetails";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
 import { useSettings } from "./settings";
@@ -58,7 +59,7 @@ function useGame(appid: number): SteamGame | null {
   return game;
 }
 
-type ItemId = "play" | "info" | "achievements" | "steam";
+type ItemId = "play" | "info" | "achievements" | "friends" | "steam";
 
 const formatDate = (seconds: number) =>
   seconds > 0 ? new Date(seconds * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "";
@@ -97,6 +98,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
   };
   const achievements = useAchievements(game);
   const store = useStoreInfo(game, itemId === "info");
+  const friends = useFriendsWhoPlayed(game);
 
   // Jeu inconnu de la bibliothèque : la page Steam saura mieux faire.
   useEffect(() => {
@@ -114,22 +116,33 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
     ...(game.shortcut && !achievements.total
       ? []
       : [{ id: "achievements" as const, label: "Succès", hint: "Parcourir", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
+    // Ce que montre l'onglet Activité de Steam : les contacts qui ont le jeu.
+    ...(game.shortcut
+      ? []
+      : [{ id: "friends" as const, label: "Contacts", hint: "Parcourir", badge: friends.friends.length ? String(friends.friends.length) : undefined }]),
     { id: "steam", label: "Page Steam d'origine", hint: "Ouvrir" },
   ];
   const current = items.find((i) => i.id === itemId) ?? items[0];
 
   const activate = (id: ItemId) => {
     if (id === "play") {
-      if (game.installed) launchGame(game);
-      else onOriginal(); // le bouton Installer est sur la page Steam
+      if (game.installed) {
+        playSfx("launch");
+        launchGame(game);
+      } else {
+        playSfx("confirm");
+        onOriginal(); // le bouton Installer est sur la page Steam
+      }
     } else if (id === "steam") {
+      playSfx("confirm");
       onOriginal();
     } else {
       setItemIdState(id);
+      if (!panelFocus) playSfx("focus");
       setPanelFocus(true);
     }
   };
-  const browsable = current.id === "info" || current.id === "achievements";
+  const browsable = current.id === "info" || current.id === "achievements" || current.id === "friends";
 
   actionRef.current = (action: NierAction, repeat: boolean): boolean => {
     if (panelFocus) {
@@ -140,6 +153,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
           return true;
         case "left":
         case "back":
+          playSfx("unfocus");
           setPanelFocus(false);
           return true;
         default:
@@ -150,15 +164,20 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
     switch (action) {
       case "up":
       case "down":
-        setItemId(items[stepIndex(index, action === "up" ? -1 : 1, items.length, !repeat)].id);
+      {
+        const next = items[stepIndex(index, action === "up" ? -1 : 1, items.length, !repeat)];
+        if (next !== current) playSfx("move");
+        setItemId(next.id);
         return true;
+      }
       case "confirm":
         activate(current.id);
         return true;
       case "right":
-        if (browsable) setPanelFocus(true);
+        if (browsable) activate(current.id);
         return true;
       case "back":
+        playSfx("close");
         onBack();
         return true;
       default:
@@ -203,6 +222,25 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
           note: a.achieved ? formatDate(a.unlockedAt) : "Verrouillé",
         }))}
         emptyText={achievements.loading ? "Chargement des succès…" : "Ce jeu n'a pas de succès."}
+      />
+    );
+  } else if (current.id === "friends") {
+    const playing = friends.friends.filter((f) => f.playingThis).length;
+    detail = (
+      <NierPeopleList
+        heading={
+          friends.friends.length
+            ? `${friends.friends.length} contact${friends.friends.length > 1 ? "s ont" : " a"} ce jeu${playing ? ` · ${playing} en train d'y jouer` : ""}`
+            : undefined
+        }
+        items={friends.friends.map((f) => ({
+          id: f.id,
+          name: f.name,
+          avatar: f.avatar,
+          active: f.online,
+          status: f.playingThis ? "Joue à ce jeu en ce moment" : f.game ? `Joue à ${f.game}` : f.online ? "En ligne" : "Hors ligne",
+        }))}
+        emptyText={friends.loading ? "Recherche des contacts…" : "Aucun de tes contacts n'a ce jeu."}
       />
     );
   } else if (current.id === "steam") {

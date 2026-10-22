@@ -3,6 +3,7 @@
 // Approche reprise de benderthemes (Updates.tsx).
 import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { callable, fetchNoCors, toaster } from "@decky/api";
+import { suspendEffects } from "./settings";
 import { useEffect, useState } from "react";
 
 export interface UpdateStatus {
@@ -52,8 +53,20 @@ const deckyBackend = (): any => (window as any).DeckyBackend ?? (window.opener a
 export async function installUpdate(status: UpdateStatus) {
   const backend = deckyBackend();
   if (!backend?.call || !status.url || !status.latest) throw new Error("Installateur de Decky indisponible.");
+  // Comme décocher les options à la main : l'accueil et la page de jeu
+  // redeviennent ceux de Steam le temps de l'installation (sinon elle reste bloquée).
+  // La nouvelle version repart avec les réglages enregistrés ; si l'installation est
+  // annulée, tout revient au bout d'une minute et demie.
+  suspendEffects(true);
+  setTimeout(() => suspendEffects(false), 90_000);
+  await new Promise((r) => setTimeout(r, 400));
   // Decky affiche sa propre fenêtre de confirmation, puis télécharge et installe le zip.
-  await backend.call("utilities/install_plugin", status.url, PLUGIN_NAME, status.latest, "", INSTALL_UPDATE);
+  try {
+    await backend.call("utilities/install_plugin", status.url, PLUGIN_NAME, status.latest, "", INSTALL_UPDATE);
+  } catch (e) {
+    suspendEffects(false);
+    throw e;
+  }
 }
 
 /** Au chargement du plugin : notification si une nouvelle version est disponible. */

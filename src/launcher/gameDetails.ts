@@ -152,3 +152,92 @@ export function useStoreInfo(game: SteamGame | null, enabled: boolean): { loadin
   if (!game || game.shortcut) return { loading: false, info: null };
   return { loading: state?.appid !== game.appid, info: state?.appid === game.appid ? state.info : null };
 }
+
+// ───────────── Contacts qui ont joué ─────────────
+// Ce que montre la section « Contacts » de l'onglet Activité de Steam :
+// SteamClient.Apps.GetFriendsWhoPlay donne leurs SteamID, friendStore leurs
+// noms, avatars et statuts (approche de benderthemes, activity.ts).
+
+export interface FriendWhoPlayed {
+  id: string;
+  name: string;
+  avatar?: string;
+  online: boolean;
+  /** Jeu en cours, s'il joue. */
+  game?: string;
+  /** Joue à ce jeu en ce moment. */
+  playingThis: boolean;
+}
+
+const STEAMID64_BASE = BigInt("76561197960265728");
+
+/** SteamID 64 bits en texte, quel que soit le format reçu (objet CSteamID, accountid...). */
+function steamId64(value: any): string {
+  try {
+    const v = value?.ConvertTo64BitString?.() ?? value?.m_ulSteamID ?? value;
+    const n = BigInt(String(v));
+    return String(n < STEAMID64_BASE ? n + STEAMID64_BASE : n);
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+function friendPersonas(): Map<string, any> {
+  const out = new Map<string, any>();
+  try {
+    const fs = (globalThis as any).friendStore;
+    for (const f of fs?.allFriends ?? fs?.m_FriendsUIFriendStore?.allFriends ?? []) {
+      const p = f?.persona ?? f;
+      const id = steamId64(p?.m_steamid ?? p?.steamid ?? f?.steamid);
+      if (id) out.set(id, p);
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+function toFriend(id: string, p: any, appid: number): FriendWhoPlayed {
+  const hash = p?.m_strAvatarHash;
+  const gameid = Number(p?.m_gameid ?? p?.m_unGamePlayedAppID ?? p?.game_id ?? 0);
+  return {
+    id,
+    name: String(p?.m_strNickname || p?.m_strPlayerName || p?.display_name || p?.name || "Contact"),
+    avatar: typeof hash === "string" && /^[0-9a-f]{40}$/i.test(hash) && !/^0+$/.test(hash) ? `https://avatars.steamstatic.com/${hash}_medium.jpg` : undefined,
+    online: p?.is_online === true || p?.m_bIsOnline === true || Number(p?.m_ePersonaState ?? 0) > 0,
+    game: String(p?.m_strGameName ?? p?.game_name ?? "") || undefined,
+    playingThis: gameid === appid,
+  };
+}
+
+const friendsCache = new Map<number, string[]>();
+
+/** Contacts qui ont joué au jeu (jeux Steam seulement), en train d'y jouer en tête. */
+export function useFriendsWhoPlayed(game: SteamGame | null): { loading: boolean; friends: FriendWhoPlayed[] } {
+  const appid = game && !game.shortcut ? game.appid : 0;
+  const [ids, setIds] = useState<{ appid: number; list: string[] } | null>(null);
+  useEffect(() => {
+    if (!appid) return;
+    const cached = friendsCache.get(appid);
+    if (cached) return setIds({ appid, list: cached });
+    let alive = true;
+    Promise.resolve(SteamClient?.Apps?.GetFriendsWhoPlay?.(appid))
+      .then((r: any) => {
+        const list = (Array.isArray(r) ? r : []).map(steamId64).filter(Boolean);
+        friendsCache.set(appid, list);
+        if (alive) setIds({ appid, list });
+      })
+      .catch(() => alive && setIds({ appid, list: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [appid]);
+  if (!appid) return { loading: false, friends: [] };
+  if (ids?.appid !== appid) return { loading: true, friends: [] };
+  const personas = friendPersonas();
+  const friends = ids.list
+    .map((id) => toFriend(id, personas.get(id), appid))
+    // En train d'y jouer, puis en ligne, puis par nom.
+    .sort((a, b) => Number(b.playingThis) - Number(a.playingThis) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, "fr"));
+  return { loading: false, friends };
+}

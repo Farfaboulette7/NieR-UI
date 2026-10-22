@@ -1,6 +1,7 @@
 import { PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
+import { stopMusic } from "./launcher/audio";
 import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
@@ -117,6 +118,7 @@ export default definePlugin(() => {
       stopSync();
       clearTimeout(updateTimer);
       setSteamMenuTheme(false);
+      stopMusic();
       routerHook.removePatch(HOME_ROUTE, homePatch);
       routerHook.removePatch(GAME_ROUTE, gamePatch);
     },

@@ -18,6 +18,15 @@ https://github.com/Farfaboulette7/NieR-UI/releases/latest/download/NieRDeck.zip
 
 La même URL installe toujours la dernière version.
 
+## Sons et musique
+
+Les bruitages et la bande originale de NieR:Automata appartiennent à Square Enix / PlatinumGames : ils ne sont pas fournis avec le plugin. NieRDeck lit ceux que tu copies sur ton Deck :
+
+- **Bruitages** : le pack Audio Loader « YoRHa Decky », dans `~/homebrew/sounds/YoRHa Decky/`.
+- **Musique de fond** : des `.mp3` / `.ogg` dans `~/Music/NieRDeck/` (sous-dossiers acceptés). Une image `.png` de l'onde portant le même nom que le morceau est affichée dans l'onglet Système.
+
+Les volumes se règlent dans l'onglet Système.
+
 ## Build
 
 ```bash

@@ -143,6 +143,55 @@ export const NIER_DETAIL_CSS = `
   color: var(--nier-mid);
 }
 
+/* ---------- Jauge (volume) ---------- */
+.nier-meter + .nier-meter {
+  margin-top: 22px;
+}
+.nier-meter-cells {
+  display: flex;
+  gap: 6px;
+}
+.nier-meter-cell {
+  flex: 1;
+  height: 22px;
+  border: var(--nier-line) solid var(--nier-low);
+  transition: background-color var(--nier-fast) linear;
+}
+.nier-meter-cell[data-on="true"] {
+  background-color: var(--nier-low);
+}
+
+/* ---------- Onde sonore (musique en cours) ---------- */
+.nier-wave {
+  position: relative;
+  height: 120px;
+  margin-bottom: 14px;
+  border-top: var(--nier-line) solid var(--nier-mid-trans);
+  border-bottom: var(--nier-line) solid var(--nier-mid-trans);
+}
+.nier-wave-image {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.nier-wave-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+}
+.nier-wave-cursor {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background-color: var(--nier-ink);
+}
+
 .nier-game-description {
   margin: 0;
   font-size: 17px;

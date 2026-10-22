@@ -157,7 +157,45 @@ ${D} .DialogHeader {
 ${D} .DialogButton {${idle}}
 ${D} .DialogButton.gpfocus,
 ${D} .DialogButton:hover {${selected}}
+/* Zones sombres et barres de progression (installateur de Decky...), repérées par tagDialogColors */
+${D} [${TAG}="panel"] {
+  background: var(--nier-high-mid) !important;
+  border: var(--nier-line) solid var(--nier-low) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+${D} [${TAG}="panel"], ${D} [${TAG}="panel"] * {color: var(--nier-low) !important;}
+${D} [${TAG}="fill"] {
+  background: var(--nier-low) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 `;
+}
+
+// ---------- Couleurs sombres et bleues restées dans les boîtes de dialogue ----------
+// Leurs classes sont hachées et inconnues de @decky/ui : on les repère à leur
+// couleur calculée et on les marque d'un attribut, que le CSS habille.
+const TAG = "data-nierdeck-dialog";
+
+function parseRgb(color: string): [number, number, number, number] | null {
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const [r, g, b, a = "1"] = m[1].split(/[,\s/]+/).filter(Boolean);
+  return [Number(r), Number(g), Number(b), Number(a)];
+}
+
+function tagDialogColors(doc: Document) {
+  const view = doc.defaultView;
+  if (!view) return;
+  for (const el of doc.querySelectorAll<HTMLElement>(".ModalOverlayContent .DialogContent *")) {
+    if (el.hasAttribute(TAG) || el.closest(".DialogButton")) continue;
+    const rgb = parseRgb(view.getComputedStyle(el).backgroundColor);
+    if (!rgb || rgb[3] < 0.5) continue;
+    const [r, g, b] = rgb;
+    if (b > r + 60 && b > g + 20) el.setAttribute(TAG, "fill"); // bleu Steam
+    else if (0.299 * r + 0.587 * g + 0.114 * b < 90) el.setAttribute(TAG, "panel"); // fond sombre
+  }
 }
 
 // ---------- Page d'un jeu (/library/app/<id>) ----------
@@ -251,6 +289,7 @@ function inject() {
         doc.head.appendChild(style);
       }
       if (style.textContent !== css) style.textContent = css;
+      tagDialogColors(doc);
       titles.push((doc.title || "?").replace(/_uid\d+$/, ""));
     } catch {
       known.delete(doc); // fenêtre fermée entre-temps
@@ -268,7 +307,10 @@ export function setSteamMenuTheme(on: boolean) {
   timer = null;
   themed = [];
   if (!on) {
-    for (const doc of steamDocuments()) doc.getElementById(STYLE_ID)?.remove();
+    for (const doc of steamDocuments()) {
+      doc.getElementById(STYLE_ID)?.remove();
+      doc.querySelectorAll(`[${TAG}]`).forEach((el) => el.removeAttribute(TAG));
+    }
     return;
   }
   try {
@@ -278,5 +320,5 @@ export function setSteamMenuTheme(on: boolean) {
     return;
   }
   inject();
-  timer = setInterval(inject, 1500);
+  timer = setInterval(inject, 700);
 }
