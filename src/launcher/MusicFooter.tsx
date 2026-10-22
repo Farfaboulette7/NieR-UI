@@ -1,4 +1,4 @@
-// Rappel du morceau en cours dans le pied de page ; un appui ouvre
+// Rappel du morceau en cours dans le pied de page (Y : pause / lecture) ; un appui ouvre
 // Système → Musique en cours dans le launcher.
 import { NierNowPlaying } from "../nier-ui";
 import { useNowPlaying } from "./audio";
@@ -32,5 +32,7 @@ export function MusicFooter({ onClick }: { onClick?: () => void }) {
   const [settings] = useSettings();
   const now = useNowPlaying(true);
   if (!settings.musicEnabled || !now.track) return null;
-  return <NierNowPlaying title={now.track.title} progress={now.duration ? now.position / now.duration : 0} onClick={onClick} />;
+  return (
+    <NierNowPlaying title={now.track.title} progress={now.duration ? now.position / now.duration : 0} paused={now.paused} onClick={onClick} />
+  );
 }

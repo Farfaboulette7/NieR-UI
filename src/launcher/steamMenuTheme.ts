@@ -140,6 +140,17 @@ ${/* Curseurs (luminosité, volume) : sans le bleu, et dans le gris chaud */ ""}
 ${sliderControl ? `${QAM} ${sliderControl} {${unblue}}` : ""}
 
 ${dialogCss(paper, idle, selected, inherit)}
+
+/* ---------- Fenêtre de volume (repérée par watchOsd) ---------- */
+[${OSD}="box"] {
+  ${paper}
+  border: var(--nier-line) solid var(--nier-low) !important;
+  border-radius: 0 !important;
+  box-shadow: var(--nier-drop) var(--nier-drop) 0 var(--nier-shadow) !important;
+}
+[${OSD}="box"] * {color: var(--nier-low) !important;}
+[${OSD}="track"] {background: var(--nier-high-mid) !important; border-radius: 0 !important; box-shadow: none !important;}
+[${OSD}="fill"] {background: var(--nier-low) !important; border-radius: 0 !important; box-shadow: none !important;}
 ${gamePageCss(paper, idle, selected, inherit)}
 `;
 }
@@ -255,6 +266,95 @@ ${scopes.length ? `${inScopes('[role="tab"] *')} {${inherit}}` : ""}
 `;
 }
 
+// ───────────── Fenêtre de volume (et autres petites barres de Steam) ─────────────
+// Petite boîte sombre en haut de l'écran avec une barre bleue : ses classes sont
+// hachées et inconnues, on la repère donc à ses couleurs quand elle apparaît ou
+// change (MutationObserver), puis on la marque pour que le CSS l'habille.
+const OSD = "data-nierdeck-osd";
+let observed = new WeakSet<Document>();
+const observers: MutationObserver[] = [];
+
+const luminance = ([r, g, b]: number[]) => 0.299 * r + 0.587 * g + 0.114 * b;
+const isBlue = ([r, g, b]: number[]) => b > r + 60 && b > g + 20;
+
+/** Couleur de fond d'un élément, y compris la première couleur d'un dégradé. */
+function backgroundRgb(view: Window, el: Element): [number, number, number, number] | null {
+  const style = view.getComputedStyle(el);
+  const rgb = parseRgb(style.backgroundColor);
+  if (rgb && rgb[3] >= 0.5) return rgb;
+  const fromImage = parseRgb(style.backgroundImage);
+  return fromImage && fromImage[3] >= 0.5 ? fromImage : null;
+}
+
+function tagOsd(doc: Document, root: Element) {
+  const view = doc.defaultView;
+  // Rien à chercher dans nos propres écrans, ni hors du haut de l'écran.
+  if (!view || root.closest(`[${OSD}="box"], [data-nierdeck-root]`)) return;
+  const area = root.getBoundingClientRect();
+  if (!area.width || area.top > view.innerHeight / 3) return;
+  const candidates = [root, ...Array.from(root.querySelectorAll("*")).slice(0, 80)];
+  for (const el of candidates) {
+    const rgb = backgroundRgb(view, el);
+    if (!rgb || !isBlue(rgb)) continue;
+    const bar = el.getBoundingClientRect();
+    if (bar.height < 2 || bar.height > 16 || bar.width < 4) continue;
+    // Boîte sombre englobante, petite et en haut de l'écran.
+    let box: Element | null = el.parentElement;
+    for (let i = 0; box && i < 6; i++, box = box.parentElement) {
+      const bg = backgroundRgb(view, box);
+      if (!bg || luminance(bg) >= 90) continue;
+      const r = box.getBoundingClientRect();
+      if (r.width < view.innerWidth * 0.6 && r.top < view.innerHeight / 3 && r.height < 200) break;
+      box = null;
+      break;
+    }
+    if (!box) continue;
+    box.setAttribute(OSD, "box");
+    el.setAttribute(OSD, "fill");
+    for (const inner of box.querySelectorAll("*")) {
+      if (inner === el || inner.hasAttribute(OSD)) continue;
+      const bg = backgroundRgb(view, inner);
+      if (bg && !isBlue(bg)) inner.setAttribute(OSD, "track");
+    }
+  }
+}
+
+function watchOsd(doc: Document) {
+  if (observed.has(doc) || !doc.body) return;
+  observed.add(doc);
+  let pending = new Set<Element>();
+  let scheduled = false;
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      if (r.type === "attributes" && (r.target as Element).hasAttribute?.(OSD)) continue;
+      // nodeType plutôt qu'instanceof : les éléments viennent d'autres fenêtres.
+      if (r.type === "attributes" && r.target.nodeType === 1) pending.add(r.target as Element);
+      r.addedNodes.forEach((n) => n.nodeType === 1 && pending.add(n as Element));
+    }
+    if (scheduled || !pending.size) return;
+    scheduled = true;
+    setTimeout(() => {
+      scheduled = false;
+      const batch = [...pending].slice(0, 40);
+      pending = new Set();
+      batch.forEach((el) => {
+        try {
+          if (el.isConnected) tagOsd(doc, el);
+        } catch {
+          /* fenêtre fermée */
+        }
+      });
+    }, 120);
+  });
+  observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+  observers.push(observer);
+}
+
+function stopWatchingOsd() {
+  observers.splice(0).forEach((o) => o.disconnect());
+  observed = new WeakSet();
+}
+
 // ───────────── Fenêtres de Steam ─────────────
 
 /** Fenêtres signalées directement (ex. l'accès rapide, où le panneau du plugin est affiché). */
@@ -308,6 +408,7 @@ function inject() {
       }
       if (style.textContent !== css) style.textContent = css;
       tagDialogColors(doc);
+      watchOsd(doc);
       titles.push((doc.title || "?").replace(/_uid\d+$/, ""));
     } catch {
       known.delete(doc); // fenêtre fermée entre-temps
@@ -328,7 +429,9 @@ export function setSteamMenuTheme(on: boolean) {
     for (const doc of steamDocuments()) {
       doc.getElementById(STYLE_ID)?.remove();
       doc.querySelectorAll(`[${TAG}]`).forEach((el) => el.removeAttribute(TAG));
+      doc.querySelectorAll(`[${OSD}]`).forEach((el) => el.removeAttribute(OSD));
     }
+    stopWatchingOsd();
     return;
   }
   try {

@@ -172,6 +172,8 @@ let track: MusicTrack | null = null;
 let fade = 0; // 0..1, multiplié par le volume choisi
 let fadeTimer: ReturnType<typeof setInterval> | null = null;
 let stoppedAt = 0;
+/** Mise en pause par l'utilisateur (bouton Y) : reprend au même endroit. */
+let userPaused = false;
 const present = new Set<symbol>();
 const musicListeners = new Set<() => void>();
 const emitMusic = () => musicListeners.forEach((l) => l());
@@ -238,7 +240,7 @@ function play(next: MusicTrack) {
 
 function wanted(): boolean {
   const s = getSettings();
-  return present.size > 0 && s.musicEnabled && volumeOf(s.musicVolume) > 0 && !!media?.music.length && !gameRunning();
+  return present.size > 0 && !userPaused && s.musicEnabled && volumeOf(s.musicVolume) > 0 && !!media?.music.length && !gameRunning();
 }
 
 function gameRunning(): boolean {
@@ -253,7 +255,7 @@ function syncMusic() {
   const playing = !!audio && !audio.paused;
   if (wanted()) {
     if (!playing) {
-      const fresh = !track || Date.now() - stoppedAt > NEW_TRACK_AFTER_MS;
+      const fresh = !track || (stoppedAt !== Infinity && Date.now() - stoppedAt > NEW_TRACK_AFTER_MS);
       if (fresh) {
         const t = firstTrack();
         if (!t) return;
@@ -267,7 +269,8 @@ function syncMusic() {
   } else if (playing) {
     fadeTo(0, () => {
       audio?.pause();
-      stoppedAt = Date.now();
+      // Une pause demandée reprend le même morceau, quel que soit le temps écoulé.
+      stoppedAt = userPaused ? Infinity : Date.now();
       emitMusic();
     });
   }
@@ -278,10 +281,20 @@ onSettingsChange(() => {
   syncMusic();
 });
 
+/** Pause / lecture (bouton Y). */
+export function toggleMusicPause() {
+  if (!media?.music.length || !getSettings().musicEnabled) return;
+  userPaused = !userPaused;
+  if (!userPaused) stoppedAt = Infinity; // reprise au même endroit
+  syncMusic();
+  emitMusic();
+}
+
 /** Joue un morceau choisi (et réactive la musique si elle était coupée). */
 export function playTrack(id: string) {
   const t = media?.music.find((m) => m.id === id);
   if (!t) return;
+  userPaused = false;
   fade = 1;
   play(t);
   if (!getSettings().musicEnabled) updateSettings({ musicEnabled: true });
@@ -336,6 +349,8 @@ export function useMusicPresence(rootRef: RefObject<HTMLElement | null>) {
 export interface NowPlaying {
   track: MusicTrack | null;
   playing: boolean;
+  /** Mise en pause avec Y. */
+  paused: boolean;
   position: number;
   duration: number;
 }
@@ -345,6 +360,7 @@ export function useNowPlaying(enabled: boolean): NowPlaying {
   const read = (): NowPlaying => ({
     track,
     playing: !!audio && !audio.paused,
+    paused: userPaused,
     position: audio?.currentTime ?? 0,
     duration: Number.isFinite(audio?.duration) ? (audio?.duration ?? 0) : 0,
   });

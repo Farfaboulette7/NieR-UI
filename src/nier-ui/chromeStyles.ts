@@ -18,6 +18,9 @@ export const NIER_CHROME_CSS = `
   box-shadow: -10px 0 24px rgba(72, 70, 61, 0.35);
   animation: nier-slide-in 340ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
+.nier-slide-over[data-instant="true"] {
+  animation: none;
+}
 .nier-slide-over[data-closing="true"] {
   pointer-events: none;
   animation: nier-slide-out 280ms cubic-bezier(0.5, 0, 0.8, 0.4) both;
@@ -82,7 +85,6 @@ export const NIER_CHROME_CSS = `
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  max-width: 300px;
   padding: 0;
   color: inherit;
   background: none;
@@ -90,37 +92,50 @@ export const NIER_CHROME_CSS = `
 .nier-now-playing:not(:disabled) {
   cursor: pointer;
 }
-.nier-now-playing-note {
+.nier-now-playing-glyph {
   flex: none;
   display: inline-grid;
   place-items: center;
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  font-size: 14px;
+  font-size: 13px;
   background-color: var(--nier-low);
   color: var(--nier-high);
 }
-.nier-now-playing-slot {
-  position: relative;
+.nier-now-playing-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   width: 230px;
-  height: 22px;
-}
-.nier-now-playing-title,
-.nier-now-playing-bar {
-  position: absolute;
-  inset: 0;
-  transition: opacity var(--nier-normal) linear;
 }
 .nier-now-playing-title {
+  display: block;
   overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
-  line-height: 22px;
+  font-size: 14px;
+  line-height: 17px;
+  text-align: left;
+}
+/* Trop long : fondu au bout de la barre, et défilement continu. */
+.nier-now-playing-title[data-overflow="true"] {
+  -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+  mask-image: linear-gradient(to right, #000 82%, transparent);
+}
+.nier-now-playing-track {
+  display: inline-block;
+}
+.nier-now-playing-title[data-overflow="true"] .nier-now-playing-track {
+  animation: nier-marquee linear infinite;
+  animation-delay: 1.5s;
+}
+@keyframes nier-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--nier-marquee)); }
 }
 .nier-now-playing-bar {
-  top: 7px;
-  bottom: 7px;
+  display: block;
+  height: 6px;
   padding: 1px;
   border: var(--nier-line) solid var(--nier-low);
 }
@@ -129,8 +144,8 @@ export const NIER_CHROME_CSS = `
   height: 100%;
   background-color: var(--nier-low);
 }
-.nier-now-playing [data-visible="false"] {
-  opacity: 0;
+.nier-now-playing[data-paused="true"] .nier-now-playing-info {
+  opacity: 0.5;
 }
 
 /* ---------- Aides de boutons ---------- */

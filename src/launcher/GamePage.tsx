@@ -8,6 +8,7 @@ import { playSfx } from "./audio";
 import { useAchievements, useFriendsWhoPlayed, useStoreInfo } from "./gameDetails";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
+import { launcherState } from "./launcherState";
 import { MusicFooter, requestMusicView } from "./MusicFooter";
 import { getSettings, useSettings } from "./settings";
 import { formatLastPlayed, formatPlaytime, formatSize, getGame, launchGame, type SteamGame } from "./steamLibrary";
@@ -43,7 +44,19 @@ export function GamePageSwitch({ original }: { original: ReactNode }) {
   const id = Number(appid);
   const [settings, loaded] = useSettings();
   const showOriginal = useOriginalPage(id);
-  if (!loaded || !settings.replaceGamePage || showOriginal || !Number.isFinite(id)) return <>{original}</>;
+  const nier = loaded && settings.replaceGamePage && !showOriginal && Number.isFinite(id);
+  // Avec le launcher en accueil, la page du jeu vit par-dessus lui (elle glisse depuis
+  // la droite) : Steam l'ouvre en page séparée au lancement d'un jeu, on y retourne aussitôt.
+  const inLauncher = nier && settings.replaceHome;
+  useEffect(() => {
+    if (!inLauncher) return;
+    const fromLauncher = launcherState.overlayAppid === id;
+    launcherState.overlayAppid = id;
+    if (fromLauncher) Navigation.NavigateBack();
+    else Navigation.Navigate("/library/home");
+  }, [inLauncher, id]);
+  if (!nier) return <>{original}</>;
+  // Affichée le temps du retour : rien ne change à l'écran.
   return <GamePage appid={id} />;
 }
 

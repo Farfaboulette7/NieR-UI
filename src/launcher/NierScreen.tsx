@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from "react";
 import { NierStage } from "../nier-ui";
-import { useMusicPresence } from "./audio";
+import { toggleMusicPause, useMusicPresence } from "./audio";
 import { GamepadRoot, type NierActionHandler } from "./GamepadRoot";
 import { useHiddenSteamChrome } from "./steamChrome";
 
@@ -14,7 +14,16 @@ export function NierScreen({ zIndex, onAction, children }: { zIndex: number; onA
   useMusicPresence(rootRef);
   return (
     <div ref={rootRef} data-nierdeck-root="" style={{ position: "fixed", inset: 0, zIndex }}>
-      <GamepadRoot onAction={onAction}>
+      <GamepadRoot
+        onAction={(action, repeat) => {
+          // Y : pause / lecture de la musique, sur tous les écrans NieRDeck.
+          if (action === "music") {
+            if (!repeat) toggleMusicPause();
+            return true;
+          }
+          return onAction(action, repeat);
+        }}
+      >
         <NierStage>{children}</NierStage>
       </GamepadRoot>
     </div>

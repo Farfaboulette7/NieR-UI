@@ -4,6 +4,7 @@ import { NierGameDetail, NierHint, NierLayout, NierMeter, NierOptionList, NierSl
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
+import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
 import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
@@ -81,9 +82,20 @@ export function LauncherPage() {
 
   // Page du jeu glissée par-dessus le launcher (sans changer de page Steam),
   // pour qu'elle arrive de la droite et reparte vers la droite.
-  const [overlay, setOverlay] = useState<{ appid: number; closing: boolean } | null>(null);
+  // Elle reste ouverte si Steam démonte le launcher (lancement d'un jeu) : au retour,
+  // elle est réaffichée telle quelle, sans animation.
+  const [overlay, setOverlayState] = useState<{ appid: number; closing: boolean; instant?: boolean } | null>(() =>
+    launcherState.overlayAppid != null ? { appid: launcherState.overlayAppid, closing: false, instant: true } : null,
+  );
+  const setOverlay = (o: { appid: number; closing: boolean } | null) => {
+    if (!o?.closing) launcherState.overlayAppid = o ? o.appid : null;
+    setOverlayState(o);
+  };
   const overlayAction = useRef<NierActionHandler | null>(null);
-  const closeOverlay = () => setOverlay((o) => (o ? { ...o, closing: true } : o));
+  const closeOverlay = () => {
+    launcherState.overlayAppid = null;
+    setOverlayState((o) => (o ? { ...o, closing: true } : o));
+  };
   // Filet de sécurité si la fin d'animation n'arrive pas (fenêtre masquée...).
   useEffect(() => {
     if (!overlay?.closing) return;
@@ -251,7 +263,7 @@ export function LauncherPage() {
         {detail.content}
       </NierLayout>
       {overlay && (
-        <NierSlideOver closing={overlay.closing} onClosed={() => setOverlay(null)}>
+        <NierSlideOver closing={overlay.closing} instant={overlay.instant} onClosed={() => setOverlay(null)}>
           <GamePanel
             appid={overlay.appid}
             onBack={closeOverlay}
