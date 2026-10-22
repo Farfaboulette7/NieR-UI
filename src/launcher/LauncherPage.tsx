@@ -1,9 +1,9 @@
 import { Navigation } from "@decky/ui";
-import { useRef, useState } from "react";
-import { NierGameDetail, NierHint, NierLayout, NierStage, NierStatus } from "../nier-ui";
-import { GamepadRoot, type NierAction } from "./GamepadRoot";
-import { useHiddenSteamChrome } from "./steamChrome";
-import { formatLastPlayed, formatPlaytime, formatSize, launchGame, useSteamLibrary, type SteamGame, type SteamLibrary } from "./steamLibrary";
+import { useState } from "react";
+import { NierGameDetail, NierHint, NierLayout, NierStatus } from "../nier-ui";
+import { stepIndex, type NierAction } from "./GamepadRoot";
+import { NierScreen } from "./NierScreen";
+import { formatLastPlayed, formatPlaytime, formatSize, openGamePage, useSteamLibrary, type SteamGame, type SteamLibrary } from "./steamLibrary";
 import { useBattery, useClock } from "./useSystemStatus";
 
 // Côté Decky : cette page possède l'état, les données et l'entrée manette ;
@@ -28,23 +28,20 @@ const TABS: Tab[] = [
   { id: "system", label: "Système", menuTitle: "Paramètres", games: () => [], empty: "Bientôt disponible." },
 ];
 
-const step = (index: number, delta: number, length: number, wrap: boolean) => {
-  const next = index + delta;
-  if (wrap) return (next + length) % length;
-  return Math.max(0, Math.min(length - 1, next));
-};
+// Sélection mémorisée : on la retrouve en revenant de la page d'un jeu.
+const remembered: { tabId: string; itemId?: string } = { tabId: TABS[0].id };
 
 export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  useHiddenSteamChrome(rootRef);
   const time = useClock();
   const battery = useBattery();
   const library = useSteamLibrary();
 
-  const [tabId, setTabId] = useState(TABS[0].id);
+  const [tabId, setTabIdState] = useState(remembered.tabId);
   const tab = TABS.find((t) => t.id === tabId) ?? TABS[0];
   const games = tab.games(library);
-  const [itemId, setItemId] = useState<string>();
+  const [itemId, setItemIdState] = useState(remembered.itemId);
+  const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
+  const setItemId = (id: string | undefined) => setItemIdState((remembered.itemId = id));
   // Par défaut (ou si le jeu a disparu de la liste) : le premier.
   const game = games.find((g) => String(g.appid) === itemId) ?? games[0];
 
@@ -55,7 +52,7 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
 
   const launch = (id: string) => {
     const target = games.find((g) => String(g.appid) === id);
-    if (target) launchGame(target);
+    if (target) openGamePage(target);
   };
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
@@ -64,16 +61,16 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
       case "up":
       case "down":
         // Boucle sur un appui simple ; s'arrête aux bords quand le bouton est maintenu.
-        if (games.length) setItemId(String(games[step(index, action === "up" ? -1 : 1, games.length, !repeat)].appid));
+        if (games.length) setItemId(String(games[stepIndex(index, action === "up" ? -1 : 1, games.length, !repeat)].appid));
         return true;
       case "prevTab":
       case "nextTab": {
         const t = TABS.indexOf(tab);
-        changeTab(TABS[step(t, action === "prevTab" ? -1 : 1, TABS.length, true)].id);
+        changeTab(TABS[stepIndex(t, action === "prevTab" ? -1 : 1, TABS.length, true)].id);
         return true;
       }
       case "confirm":
-        if (game) launchGame(game);
+        if (game) openGamePage(game);
         return true;
       case "back":
         if (mode === "standalone") {
@@ -88,51 +85,47 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
 
   return (
     // Plein écran. En mode accueil, on reste sous les autres pages Steam (z-index bas).
-    <div ref={rootRef} data-nierdeck-root="" style={{ position: "fixed", inset: 0, zIndex: mode === "standalone" ? 900 : 1 }}>
-      <GamepadRoot onAction={onAction}>
-        <NierStage>
-          <NierLayout
-            tabs={TABS}
-            activeTabId={tab.id}
-            onTabChange={changeTab}
-            status={<NierStatus time={time} battery={battery} />}
-            menuTitle={`${tab.menuTitle}${games.length ? ` · ${games.length}` : ""}`}
-            menuItems={games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true) }))}
-            activeItemId={game ? String(game.appid) : undefined}
-            onItemSelect={setItemId}
-            onItemActivate={launch}
-            detailTitle={game?.name ?? tab.label}
-            footerStart={
-              <>
-                <NierHint button="STEAM" label="Menu" />
-                <NierHint button="QAM" label="Accès rapide" />
-              </>
-            }
-            footer={
-              <>
-                <NierHint button={["L1", "R1"]} label="Onglets" />
-                {game && <NierHint button="A" label={game.installed ? "Lancer" : "Installer"} />}
-                {mode === "standalone" && <NierHint button="B" label="Retour" />}
-              </>
-            }
-          >
-            {game ? (
-              <NierGameDetail
-                image={game.banners}
-                imageAlt={game.name}
-                fields={[
-                  { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
-                  { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
-                  { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
-                  { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
-                ]}
-              />
-            ) : (
-              <NierGameDetail description={library.error ?? tab.empty} />
-            )}
-          </NierLayout>
-        </NierStage>
-      </GamepadRoot>
-    </div>
+    <NierScreen zIndex={mode === "standalone" ? 900 : 1} onAction={onAction}>
+      <NierLayout
+        tabs={TABS}
+        activeTabId={tab.id}
+        onTabChange={changeTab}
+        status={<NierStatus time={time} battery={battery} />}
+        menuTitle={`${tab.menuTitle}${games.length ? ` · ${games.length}` : ""}`}
+        menuItems={games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true) }))}
+        activeItemId={game ? String(game.appid) : undefined}
+        onItemSelect={setItemId}
+        onItemActivate={launch}
+        detailTitle={game?.name ?? tab.label}
+        footerStart={
+          <>
+            <NierHint button="STEAM" label="Menu" />
+            <NierHint button="QAM" label="Accès rapide" />
+          </>
+        }
+        footer={
+          <>
+            <NierHint button={["L1", "R1"]} label="Onglets" />
+            {game && <NierHint button="A" label="Ouvrir" />}
+            {mode === "standalone" && <NierHint button="B" label="Retour" />}
+          </>
+        }
+      >
+        {game ? (
+          <NierGameDetail
+            image={game.banners}
+            imageAlt={game.name}
+            fields={[
+              { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
+              { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
+              { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
+              { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
+            ]}
+          />
+        ) : (
+          <NierGameDetail description={library.error ?? tab.empty} />
+        )}
+      </NierLayout>
+    </NierScreen>
   );
 }

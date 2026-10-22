@@ -6,9 +6,11 @@ export interface NierSettings {
   replaceHome: boolean;
   /** Habiller au style NieR le menu Steam (gauche) et l'accès rapide (droite). */
   themeSteamMenus: boolean;
+  /** Remplacer la page d'un jeu Steam par la page NieR. */
+  replaceGamePage: boolean;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: false, themeSteamMenus: true };
+const DEFAULTS: NierSettings = { replaceHome: false, themeSteamMenus: true, replaceGamePage: true };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");

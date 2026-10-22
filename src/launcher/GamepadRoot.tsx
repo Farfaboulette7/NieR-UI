@@ -5,6 +5,13 @@ import { useMemo, useRef, type ReactNode } from "react";
 
 export type NierAction = "up" | "down" | "left" | "right" | "prevTab" | "nextTab" | "confirm" | "back";
 
+/** Index suivant dans une liste : boucle si `wrap`, sinon s'arrête aux bords. */
+export const stepIndex = (index: number, delta: number, length: number, wrap: boolean) => {
+  const next = index + delta;
+  if (wrap) return (next + length) % length;
+  return Math.max(0, Math.min(length - 1, next));
+};
+
 /** Retourne true si l'action a été prise en charge (sinon Steam la traite). */
 export type NierActionHandler = (action: NierAction, repeat: boolean) => boolean;
 

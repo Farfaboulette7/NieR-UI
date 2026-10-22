@@ -1,6 +1,7 @@
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
+import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
@@ -9,6 +10,7 @@ import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launc
 
 const ROUTE = "/nierdeck";
 const HOME_ROUTE = "/library/home";
+const GAME_ROUTE = "/library/app/:appid";
 
 const NierIcon = () => (
   <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor">
@@ -62,6 +64,15 @@ function QuickAccessPanel() {
       </PanelSectionRow>
       <PanelSectionRow>
         <ToggleField
+          label="Page de jeu NieR"
+          description="Remplace la page d'un jeu Steam par la page NieR (Jouer, Informations, Succès)."
+          checked={settings.replaceGamePage}
+          disabled={!loaded}
+          onChange={(on) => updateSettings({ replaceGamePage: on })}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
           label="Thème NieR de Steam"
           description={
             settings.themeSteamMenus
@@ -109,6 +120,17 @@ export default definePlugin(() => {
     return props;
   });
 
+  // Même principe pour la page d'un jeu : GamePageSwitch choisit entre la page NieR et celle de Steam.
+  const gamePatch = routerHook.addPatch(GAME_ROUTE, (props: any) => {
+    try {
+      const original = props.children;
+      if (original != null && original?.type !== GamePageSwitch) props.children = <GamePageSwitch original={original} />;
+    } catch (e) {
+      console.error("[NieRDeck] patch de la page de jeu", e);
+    }
+    return props;
+  });
+
   return {
     name: "NieRDeck",
     titleView: <div className={staticClasses.Title}>NieRDeck</div>,
@@ -120,6 +142,7 @@ export default definePlugin(() => {
       setSteamMenuTheme(false);
       routerHook.removeRoute(ROUTE);
       routerHook.removePatch(HOME_ROUTE, homePatch);
+      routerHook.removePatch(GAME_ROUTE, gamePatch);
     },
   };
 });

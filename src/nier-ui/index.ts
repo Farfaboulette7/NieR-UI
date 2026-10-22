@@ -2,6 +2,8 @@ export { NierLayout, NierStyles } from "./NierLayout";
 export type { NierLayoutProps, NierTab, NierMenuItem } from "./NierLayout";
 export { NierGameDetail } from "./NierGameDetail";
 export type { NierGameDetailProps, NierField } from "./NierGameDetail";
+export { NierAchievementList } from "./NierAchievementList";
+export type { NierAchievementItem, NierAchievementListProps } from "./NierAchievementList";
 export { NierStage } from "./NierStage";
 export { NierStatus, NierHint } from "./NierChrome";
 export type { NierBattery, NierButton } from "./NierChrome";

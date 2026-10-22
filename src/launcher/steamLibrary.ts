@@ -25,6 +25,10 @@ export interface SteamGame {
   sizeOnDisk: number;
   /** Bannières 460×215, de la plus fiable à la moins fiable. */
   banners: string[];
+  /** Grandes images (« hero ») de la page du jeu. */
+  heroes: string[];
+  /** Raccourci non-Steam (jeu ajouté à la main, Heroic...). */
+  shortcut: boolean;
 }
 
 const APP_TYPE_GAME = 1;
@@ -130,7 +134,22 @@ function toGame(a: any): SteamGame | null {
       ...appStoreUrls(["GetLandscapeImageURLForApp", "GetCachedLandscapeImageURLForApp"], a),
       ...(shortcut ? [] : [`${CDN}/${a.appid}/header.jpg`]),
     ],
+    heroes: [
+      ...appStoreUrls(["GetCustomHeroImageURLs"], a),
+      ...appStoreUrls(["GetHeroImageURLForApp", "GetCachedHeroImageURLForApp"], a),
+      ...(shortcut ? [] : [`${CDN}/${a.appid}/library_hero.jpg`]),
+    ],
+    shortcut,
   };
+}
+
+/** Un jeu de la bibliothèque par son identifiant (null s'il est inconnu). */
+export function getGame(appid: number): SteamGame | null {
+  try {
+    return toGame(appStore?.GetAppOverviewByAppID?.(appid));
+  } catch {
+    return null;
+  }
 }
 
 const isHidden = (a: any, hidden: Set<number>) => hidden.has(Number(a?.appid)) || a?.visible_in_game_list === false;
@@ -183,12 +202,13 @@ export function useSteamLibrary(refreshMs = 5000): SteamLibrary {
   return library;
 }
 
-/** Lance un jeu installé ; sinon ouvre sa page Steam (pour l'installer). */
+/** Ouvre la page du jeu (la page NieR si elle remplace celle de Steam). */
+export function openGamePage(game: SteamGame) {
+  Navigation.Navigate(`/library/app/${game.appid}`);
+}
+
+/** Lance un jeu installé (l'installation passe par la page Steam d'origine). */
 export function launchGame(game: SteamGame) {
-  if (!game.installed) {
-    Navigation.Navigate(`/library/app/${game.appid}`);
-    return;
-  }
   try {
     SteamClient.Apps.RunGame(game.gameid, "", -1, 100);
     toaster.toast({ title: "NieRDeck", body: `Lancement : ${game.name}` });

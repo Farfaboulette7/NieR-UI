@@ -68,6 +68,81 @@ export const NIER_DETAIL_CSS = `
   padding-right: 32px;
 }
 
+/* ---------- Succès ---------- */
+.nier-ach {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.nier-ach-progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 16px;
+  letter-spacing: var(--nier-tracking-wide);
+}
+.nier-ach-progress-bar {
+  height: 10px;
+  padding: 2px;
+  border: var(--nier-line) solid var(--nier-low);
+}
+.nier-ach-progress-fill {
+  height: 100%;
+  background-color: var(--nier-low);
+}
+.nier-ach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nier-ach-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: var(--nier-line) solid var(--nier-mid-trans);
+}
+.nier-ach-item[data-achieved="false"] {
+  opacity: 0.55;
+}
+.nier-ach-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  background-color: var(--nier-mid-trans);
+}
+.nier-ach-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: sepia(0.35);
+}
+.nier-ach-item[data-achieved="false"] .nier-ach-icon img {
+  filter: grayscale(1);
+}
+.nier-ach-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nier-ach-name {
+  font-size: 16px;
+}
+.nier-ach-desc {
+  font-size: 14px;
+  color: var(--nier-mid);
+}
+.nier-ach-note {
+  flex: none;
+  font-size: 13px;
+  color: var(--nier-mid);
+}
+
 .nier-game-description {
   margin: 0;
   font-size: 17px;
