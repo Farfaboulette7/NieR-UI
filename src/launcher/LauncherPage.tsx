@@ -1,7 +1,8 @@
 import { Navigation } from "@decky/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NierGameDetail, NierHint, NierLayout, NierMeter, NierSlideOver, NierStatus, NierWaveform, type NierMenuItem } from "../nier-ui";
-import { loadMedia, mediaUrl, nextTrack, playSfx, useMedia, useNowPlaying, type NowPlaying } from "./audio";
+import { NierGameDetail, NierHint, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierMenuItem, type NierOption } from "../nier-ui";
+import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
+import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
@@ -41,8 +42,8 @@ const remembered: { tabId: string; items: Record<string, string | undefined>; co
 interface TabView {
   menuTitle: string;
   items: NierMenuItem[];
-  /** Zone de droite pour l'item sélectionné (undefined si la liste est vide). */
-  detail: (id: string | undefined) => { title: string; content: ReactNode };
+  /** Zone de droite pour l'item sélectionné (undefined si la liste est vide) ; `row` : ligne choisie dans son panneau. */
+  detail: (id: string | undefined, row?: string) => { title: string; content: ReactNode };
   activate: (id: string) => void;
   /** Libellé de A pour l'item sélectionné ; rien = pas d'aide. */
   hint?: (id: string) => string | undefined;
@@ -52,6 +53,8 @@ interface TabView {
   adjust?: (id: string, delta: number) => boolean;
   /** L'item sélectionné se règle avec gauche / droite (aide affichée). */
   adjustable?: (id: string) => boolean;
+  /** Item dont la zone de droite est une liste de choix : A y entre, haut/bas choisit, B en sort. */
+  panel?: (id: string) => { rows: string[]; initial?: string; activate: (row: string) => void } | undefined;
 }
 
 export function LauncherPage() {
@@ -73,6 +76,8 @@ export function LauncherPage() {
   const updates = useUpdateStatus(tabId === "system");
   const media = useMedia();
   const nowPlaying = useNowPlaying(tabId === "system");
+  // Liste de la zone de droite qui a la main (ex. les morceaux), et sa ligne sélectionnée.
+  const [panel, setPanel] = useState<{ tabKey: string; itemId: string; row: string } | null>(null);
 
   // Page du jeu glissée par-dessus le launcher (sans changer de page Steam),
   // pour qu'elle arrive de la droite et reparte vers la droite.
@@ -118,11 +123,59 @@ export function LauncherPage() {
   }
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
-  const detail = view.detail(current?.id);
+  const panelDef = current ? view.panel?.(current.id) : undefined;
+  const panelRow = panel && panelDef && panel.tabKey === tabKey && panel.itemId === current?.id ? panel.row : undefined;
+  const detail = view.detail(current?.id, panelRow);
   const hint = current && view.hint?.(current.id);
+
+  // Pied de page : le morceau en cours mène à Système → Musique en cours.
+  const showMusic = () => {
+    if (overlay) closeOverlay();
+    setPanel(null);
+    setTabId("system");
+    setItems((remembered.items = { ...remembered.items, system: "track" }));
+  };
+  useEffect(() => {
+    if (takeMusicViewRequest()) showMusic();
+    return onMusicViewRequest(() => takeMusicViewRequest() && showMusic());
+  }, []);
+
+  const onPanelAction = (action: NierAction, repeat: boolean): boolean => {
+    if (!panelDef || panelRow === undefined || !current) return false;
+    const rows = panelDef.rows;
+    switch (action) {
+      case "up":
+      case "down": {
+        const next = rows[stepIndex(Math.max(0, rows.indexOf(panelRow)), action === "up" ? -1 : 1, rows.length, !repeat)];
+        if (next !== panelRow) playSfx("move");
+        setPanel({ tabKey, itemId: current.id, row: next });
+        return true;
+      }
+      case "confirm":
+        panelDef.activate(panelRow);
+        return true;
+      case "back":
+      case "left":
+        playSfx("unfocus");
+        setPanel(null);
+        return true;
+      case "prevTab":
+      case "nextTab":
+        setPanel(null);
+        return false;
+      default:
+        return true;
+    }
+  };
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
     if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
+    if (panelRow !== undefined && onPanelAction(action, repeat)) return true;
+    if (current && panelDef?.rows.length && (action === "confirm" || action === "right")) {
+      playSfx("focus");
+      setPanel({ tabKey, itemId: current.id, row: panelDef.initial ?? panelDef.rows[0] });
+      return true;
+    }
     const list = view.items;
     const index = current ? list.indexOf(current) : 0;
     switch (action) {
@@ -170,26 +223,42 @@ export function LauncherPage() {
         onItemSelect={setItemId}
         onItemActivate={view.activate}
         detailTitle={detail.title}
+        detailFocused={panelRow !== undefined}
         footerStart={
           <>
             <NierHint button="STEAM" label="Menu" />
             <NierHint button="QAM" label="Accès rapide" />
+            <MusicFooter onClick={showMusic} />
           </>
         }
         footer={
-          <>
-            <NierHint button={["L1", "R1"]} label="Onglets" />
-            {current && view.adjustable?.(current.id) && <NierHint button="LEFTRIGHT" label="Régler" />}
-            {hint && <NierHint button="A" label={hint} />}
-            {view.back && <NierHint button="B" label="Retour" />}
-          </>
+          panelRow !== undefined ? (
+            <>
+              <NierHint button="UPDOWN" label="Choisir" />
+              <NierHint button="A" label="Valider" />
+              <NierHint button="B" label="Retour" />
+            </>
+          ) : (
+            <>
+              <NierHint button={["L1", "R1"]} label="Onglets" />
+              {current && view.adjustable?.(current.id) && <NierHint button="LEFTRIGHT" label="Régler" />}
+              {hint && <NierHint button="A" label={hint} />}
+              {view.back && <NierHint button="B" label="Retour" />}
+            </>
+          )
         }
       >
         {detail.content}
       </NierLayout>
       {overlay && (
         <NierSlideOver closing={overlay.closing} onClosed={() => setOverlay(null)}>
-          <GamePanel appid={overlay.appid} onBack={closeOverlay} onOriginal={() => openOriginalPage(overlay.appid)} actionRef={overlayAction} />
+          <GamePanel
+            appid={overlay.appid}
+            onBack={closeOverlay}
+            onOriginal={() => openOriginalPage(overlay.appid)}
+            actionRef={overlayAction}
+            footerExtra={<MusicFooter onClick={showMusic} />}
+          />
         </NierSlideOver>
       )}
     </NierScreen>
@@ -359,14 +428,15 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
   const isVolume = (id: string) => VOLUMES.find((v) => v.id === id);
   const tracks = media?.music ?? [];
   const sfxFound = !!media && Object.keys(media.sfx).length > 0;
+  const musicDir = media?.musicDir ?? "~/Music/NieRDeck";
+  const noMusic = `Aucune musique trouvée. Copie tes morceaux (mp3, ogg…) dans ${musicDir}, puis appuie sur A ici pour relire le dossier.`;
+  const trackLabel = (t: { number: number | null; title: string }) => `${t.number != null ? `${String(t.number).padStart(2, "0")}. ` : ""}${t.title}`;
 
   const volumeDetail = (id: "sfxVolume" | "musicVolume"): ReactNode => {
     const missing =
       id === "sfxVolume"
-        ? !sfxFound &&
-          "Aucun bruitage trouvé. Copie le dossier « YoRHa Decky » (pack Audio Loader) dans ~/homebrew/sounds/ sur le Deck."
-        : !tracks.length &&
-          `Aucune musique trouvée. Copie les morceaux (.mp3 ou .ogg, avec leur image .png d'onde si tu l'as) dans ${media?.musicDir ?? "~/Music/NieRDeck"}, puis « Musique en cours » → A.`;
+        ? !sfxFound && "Aucun bruitage trouvé. Copie le dossier « YoRHa Decky » (pack Audio Loader) dans ~/homebrew/sounds/ sur le Deck."
+        : !tracks.length && noMusic;
     return (
       <div>
         <NierMeter label={id === "sfxVolume" ? "Bruitages" : "Musique"} value={settings[id]} />
@@ -377,16 +447,49 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
     );
   };
 
+  // Panneau « Musique en cours » : deux interrupteurs puis la liste des morceaux.
+  const musicRows: NierOption[] = [
+    { id: "music", label: "Musique de fond", badge: settings.musicEnabled ? "Activée" : "Désactivée" },
+    { id: "shuffle", label: "Lecture aléatoire", badge: settings.musicShuffle ? "Oui" : "Non" },
+    ...tracks.map((t) => ({ id: `t:${t.id}`, label: trackLabel(t), active: now.track?.id === t.id })),
+  ];
+  const musicDetail = (row?: string): ReactNode => {
+    const t = now.track;
+    const pct = now.duration ? Math.round((now.position / now.duration) * 100) : 0;
+    if (!tracks.length) return <NierGameDetail art={false} description={noMusic} />;
+    return (
+      <div>
+        <div className="nier-ach-progress">
+          <div className="nier-ach-progress-label">
+            <span>{t && settings.musicEnabled ? trackLabel(t) : "Musique désactivée"}</span>
+            <span>{t ? `${formatTime(now.position)} / ${formatTime(now.duration)}${now.playing ? "" : " · pause"}` : ""}</span>
+          </div>
+          <div className="nier-ach-progress-bar">
+            <div className="nier-ach-progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        <div className="nier-options-title">
+          {row === undefined ? `A : choisir un morceau parmi les ${tracks.length}, ou régler la lecture.` : "Morceaux"}
+        </div>
+        <NierOptionList options={musicRows} selectedId={row} />
+      </div>
+    );
+  };
+
   return {
     menuTitle: "Paramètres",
     items: [
       ...TOGGLES.map((t) => ({ id: t.id, label: t.label, badge: settings[t.id] ? "Oui" : "Non" })),
+      {
+        id: "track",
+        label: "Musique en cours",
+        badge: !tracks.length ? "—" : !settings.musicEnabled ? "Non" : now.track?.number != null ? String(now.track.number) : undefined,
+      },
       ...VOLUMES.map((v) => ({ id: v.id, label: v.label, badge: settings[v.id] ? `${settings[v.id]} %` : "Coupé" })),
-      { id: "track", label: "Musique en cours", badge: tracks.length ? String(now.track?.number ?? "—") : "—" },
       { id: "updates", label: "Mises à jour", badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
       { id: "steam", label: "Paramètres Steam" },
     ],
-    detail: (id) => {
+    detail: (id, row) => {
       const toggle = id ? isToggle(id) : undefined;
       if (toggle) {
         return {
@@ -402,32 +505,7 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
       }
       const volume = id ? isVolume(id) : undefined;
       if (volume) return { title: volume.label, content: volumeDetail(volume.id) };
-      if (id === "track") {
-        const t = now.track;
-        return {
-          title: t ? t.title : "Musique",
-          content: tracks.length ? (
-            <div>
-              <NierWaveform src={mediaUrl(t?.wave)} progress={now.duration ? now.position / now.duration : 0} />
-              <NierGameDetail
-                art={false}
-                fields={[
-                  { label: "Morceau", value: t ? `${t.number != null ? `${String(t.number).padStart(2, "0")}. ` : ""}${t.title}` : "—" },
-                  { label: "Lecture", value: t ? `${formatTime(now.position)} / ${formatTime(now.duration)}${now.playing ? "" : " · en pause"}` : "—" },
-                  { label: "Bibliothèque", value: `${tracks.length} morceau${tracks.length > 1 ? "x" : ""}` },
-                ]}
-                description={
-                  settings.musicVolume
-                    ? "A : morceau suivant, choisi au hasard. Un morceau au hasard est aussi choisi à chaque ouverture du launcher."
-                    : "La musique est coupée : monte son volume juste au-dessus."
-                }
-              />
-            </div>
-          ) : (
-            <NierGameDetail art={false} description={`Aucune musique trouvée. Copie les morceaux (.mp3 ou .ogg, avec leur image .png d'onde si tu l'as) dans ${media?.musicDir ?? "~/Music/NieRDeck"}, puis appuie sur A ici pour relire le dossier.`} />
-          ),
-        };
-      }
+      if (id === "track") return { title: "Musique en cours", content: musicDetail(row) };
       if (id === "updates") {
         return {
           title: "Mises à jour",
@@ -460,9 +538,9 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
         playSfx(settings[toggle.id] ? "toggleOff" : "toggleOn");
         updateSettings({ [toggle.id]: !settings[toggle.id] });
       } else if (id === "track") {
+        // Sans morceau, A relit le dossier ; sinon, le panneau prend la main.
         playSfx("confirm");
-        if (tracks.length) nextTrack();
-        else void loadMedia(true);
+        void loadMedia(true);
       } else if (id === "updates") {
         playSfx("confirm");
         if (status?.available) installUpdate(status).catch((e) => console.error("[NieRDeck] mise à jour", e));
@@ -472,6 +550,25 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
         Navigation.Navigate("/settings");
       }
     },
+    panel: (id) =>
+      id === "track" && tracks.length
+        ? {
+            rows: musicRows.map((r) => r.id),
+            initial: now.track ? `t:${now.track.id}` : undefined,
+            activate: (row) => {
+              if (row === "music") {
+                playSfx(settings.musicEnabled ? "toggleOff" : "toggleOn");
+                updateSettings({ musicEnabled: !settings.musicEnabled });
+              } else if (row === "shuffle") {
+                playSfx(settings.musicShuffle ? "toggleOff" : "toggleOn");
+                updateSettings({ musicShuffle: !settings.musicShuffle });
+              } else if (row.startsWith("t:")) {
+                playSfx("confirm");
+                playTrack(row.slice(2));
+              }
+            },
+          }
+        : undefined,
     adjust: (id, delta) => {
       const volume = isVolume(id);
       if (!volume) return false;
@@ -483,6 +580,18 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
     },
     adjustable: (id) => !!isVolume(id),
     hint: (id) =>
-      isToggle(id) ? "Changer" : isVolume(id) ? undefined : id === "track" ? (tracks.length ? "Suivant" : "Relire") : id === "updates" ? (status?.available ? "Installer" : "Vérifier") : "Ouvrir",
+      isToggle(id)
+        ? "Changer"
+        : isVolume(id)
+          ? undefined
+          : id === "track"
+            ? tracks.length
+              ? "Choisir"
+              : "Relire"
+            : id === "updates"
+              ? status?.available
+                ? "Installer"
+                : "Vérifier"
+              : "Ouvrir",
   };
 }

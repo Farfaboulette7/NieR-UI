@@ -77,6 +77,62 @@ export const NIER_CHROME_CSS = `
   50%      { opacity: 0.45; }
 }
 
+/* ---------- Morceau en cours (pied de page) ---------- */
+.nier-now-playing {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 300px;
+  padding: 0;
+  color: inherit;
+  background: none;
+}
+.nier-now-playing:not(:disabled) {
+  cursor: pointer;
+}
+.nier-now-playing-note {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 14px;
+  background-color: var(--nier-low);
+  color: var(--nier-high);
+}
+.nier-now-playing-slot {
+  position: relative;
+  width: 230px;
+  height: 22px;
+}
+.nier-now-playing-title,
+.nier-now-playing-bar {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--nier-normal) linear;
+}
+.nier-now-playing-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 22px;
+}
+.nier-now-playing-bar {
+  top: 7px;
+  bottom: 7px;
+  padding: 1px;
+  border: var(--nier-line) solid var(--nier-low);
+}
+.nier-now-playing-fill {
+  display: block;
+  height: 100%;
+  background-color: var(--nier-low);
+}
+.nier-now-playing [data-visible="false"] {
+  opacity: 0;
+}
+
 /* ---------- Aides de boutons ---------- */
 .nier-hint {
   display: inline-flex;

@@ -8,7 +8,8 @@ import { playSfx } from "./audio";
 import { useAchievements, useFriendsWhoPlayed, useStoreInfo } from "./gameDetails";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
-import { useSettings } from "./settings";
+import { MusicFooter, requestMusicView } from "./MusicFooter";
+import { getSettings, useSettings } from "./settings";
 import { formatLastPlayed, formatPlaytime, formatSize, getGame, launchGame, type SteamGame } from "./steamLibrary";
 import { useBattery, useClock } from "./useSystemStatus";
 
@@ -78,13 +79,15 @@ export interface GamePanelProps {
   onOriginal: () => void;
   /** Reçoit le gestionnaire manette de la page, à appeler par l'écran qui la contient. */
   actionRef: MutableRefObject<NierActionHandler | null>;
+  /** Ajouté au pied de page, après les aides STEAM / ··· (morceau en cours...). */
+  footerExtra?: ReactNode;
 }
 
 /**
  * Contenu de la page d'un jeu, sans écran autour : affiché seul (route Steam)
  * ou glissé par-dessus le launcher.
  */
-export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelProps) {
+export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }: GamePanelProps) {
   const time = useClock();
   const battery = useBattery();
   const game = useGame(appid);
@@ -283,6 +286,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
         <>
           <NierHint button="STEAM" label="Menu" />
           <NierHint button="QAM" label="Accès rapide" />
+          {footerExtra}
         </>
       }
       footer={
@@ -304,12 +308,24 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelPro
   );
 }
 
+/** Retour au launcher (l'accueil), sur Système → Musique en cours. */
+function openMusicInLauncher() {
+  requestMusicView();
+  Navigation.Navigate("/library/home");
+}
+
 /** Page affichée par la route Steam /library/app/<id> (ouverte par Steam, au lancement d'un jeu...). */
 function GamePage({ appid }: { appid: number }) {
   const actionRef = useRef<NierActionHandler | null>(null);
   return (
     <NierScreen zIndex={2} onAction={(action, repeat) => actionRef.current?.(action, repeat) ?? false}>
-      <GamePanel appid={appid} onBack={() => Navigation.NavigateBack()} onOriginal={() => showOriginalPage(appid)} actionRef={actionRef} />
+      <GamePanel
+        appid={appid}
+        onBack={() => Navigation.NavigateBack()}
+        onOriginal={() => showOriginalPage(appid)}
+        actionRef={actionRef}
+        footerExtra={<MusicFooter onClick={getSettings().replaceHome ? openMusicInLauncher : undefined} />}
+      />
     </NierScreen>
   );
 }

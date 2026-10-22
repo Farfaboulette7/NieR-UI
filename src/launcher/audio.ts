@@ -7,14 +7,12 @@
 import { callable } from "@decky/api";
 import { Router } from "@decky/ui";
 import { useEffect, useState, type RefObject } from "react";
-import { getSettings, onSettingsChange } from "./settings";
+import { getSettings, onSettingsChange, updateSettings } from "./settings";
 
 export interface MusicTrack {
   id: string;
   title: string;
   number: number | null;
-  /** Image de l'onde sonore (même nom que le morceau), si présente. */
-  wave: string | null;
 }
 
 interface MediaInfo {
@@ -38,6 +36,8 @@ export function loadMedia(refresh = false): Promise<MediaInfo | null> {
   if (!mediaAsk) {
     mediaAsk = getMedia()
       .then((m) => {
+        // Ordre de l'album : numéro de piste, puis titre.
+        m.music.sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9) || a.title.localeCompare(b.title, "fr"));
         media = m;
         mediaListeners.forEach((l) => l());
         return m;
@@ -181,11 +181,23 @@ const FADE_MS = 40;
 /** Absence plus longue que ça : on repart sur un nouveau morceau au retour. */
 const NEW_TRACK_AFTER_MS = 30_000;
 
+/** Morceau suivant : au hasard, ou le suivant de l'album. */
 function pickTrack(): MusicTrack | null {
   const list = media?.music ?? [];
   if (!list.length) return null;
+  if (!getSettings().musicShuffle) {
+    const i = list.findIndex((t) => t.id === track?.id);
+    return list[(i + 1) % list.length];
+  }
   const others = list.length > 1 ? list.filter((t) => t.id !== track?.id) : list;
   return others[Math.floor(Math.random() * others.length)];
+}
+
+/** Premier morceau d'une session : au hasard, ou là où l'on s'était arrêté. */
+function firstTrack(): MusicTrack | null {
+  const list = media?.music ?? [];
+  if (!getSettings().musicShuffle) return list.find((t) => t.id === getSettings().musicTrack) ?? list[0] ?? null;
+  return pickTrack();
 }
 
 function applyVolume() {
@@ -220,11 +232,13 @@ function play(next: MusicTrack) {
   audio.src = url;
   applyVolume();
   audio.play().catch((e) => console.error("[NieRDeck] musique", e));
+  if (getSettings().musicTrack !== next.id) updateSettings({ musicTrack: next.id });
   emitMusic();
 }
 
 function wanted(): boolean {
-  return present.size > 0 && volumeOf(getSettings().musicVolume) > 0 && !!media?.music.length && !gameRunning();
+  const s = getSettings();
+  return present.size > 0 && s.musicEnabled && volumeOf(s.musicVolume) > 0 && !!media?.music.length && !gameRunning();
 }
 
 function gameRunning(): boolean {
@@ -241,7 +255,7 @@ function syncMusic() {
     if (!playing) {
       const fresh = !track || Date.now() - stoppedAt > NEW_TRACK_AFTER_MS;
       if (fresh) {
-        const t = pickTrack();
+        const t = firstTrack();
         if (!t) return;
         fade = 0;
         play(t);
@@ -264,12 +278,13 @@ onSettingsChange(() => {
   syncMusic();
 });
 
-/** Morceau suivant (au hasard). */
-export function nextTrack() {
-  const t = pickTrack();
+/** Joue un morceau choisi (et réactive la musique si elle était coupée). */
+export function playTrack(id: string) {
+  const t = media?.music.find((m) => m.id === id);
   if (!t) return;
   fade = 1;
   play(t);
+  if (!getSettings().musicEnabled) updateSettings({ musicEnabled: true });
 }
 
 /** Arrêt immédiat (déchargement du plugin). */
@@ -325,7 +340,7 @@ export interface NowPlaying {
   duration: number;
 }
 
-/** Morceau en cours, rafraîchi deux fois par seconde (pour l'onglet Système). */
+/** Morceau en cours, rafraîchi deux fois par seconde (onglet Système, pied de page). */
 export function useNowPlaying(enabled: boolean): NowPlaying {
   const read = (): NowPlaying => ({
     track,

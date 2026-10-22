@@ -161,35 +161,58 @@ export const NIER_DETAIL_CSS = `
   background-color: var(--nier-low);
 }
 
-/* ---------- Onde sonore (musique en cours) ---------- */
-.nier-wave {
-  position: relative;
-  height: 120px;
-  margin-bottom: 14px;
-  border-top: var(--nier-line) solid var(--nier-mid-trans);
+/* ---------- Liste de choix (zone de droite) ---------- */
+.nier-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nier-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 16px;
+  text-align: left;
+  color: var(--nier-low);
+  background-color: transparent;
   border-bottom: var(--nier-line) solid var(--nier-mid-trans);
+  transition: background-color var(--nier-fast) linear, color var(--nier-fast) linear;
 }
-.nier-wave-image {
-  position: absolute;
-  inset: 0;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
+.nier-option[data-selected="true"] {
+  background-color: var(--nier-low);
+  color: var(--nier-high);
 }
-.nier-wave-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 2px;
+.nier-option-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: var(--nier-line) solid currentColor;
 }
-.nier-wave-cursor {
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  width: 2px;
-  background-color: var(--nier-ink);
+.nier-option[data-active="true"] .nier-option-mark {
+  background-color: currentColor;
+}
+.nier-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nier-option-badge {
+  flex: none;
+  font-size: 14px;
+  opacity: 0.8;
+}
+.nier-options-title {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  letter-spacing: var(--nier-tracking-wide);
+  color: var(--nier-mid);
 }
 
 .nier-game-description {

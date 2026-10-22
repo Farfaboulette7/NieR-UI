@@ -12,9 +12,15 @@ export interface NierSettings {
   sfxVolume: number;
   /** Volume de la musique de fond, 0 à 100. */
   musicVolume: number;
+  /** Musique de fond activée. */
+  musicEnabled: boolean;
+  /** Morceaux au hasard (sinon dans l'ordre de l'album). */
+  musicShuffle: boolean;
+  /** Dernier morceau joué (reprise quand la lecture aléatoire est coupée). */
+  musicTrack: string;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true, sfxVolume: 60, musicVolume: 40 };
+const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true, sfxVolume: 60, musicVolume: 40, musicEnabled: true, musicShuffle: true, musicTrack: "" };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");

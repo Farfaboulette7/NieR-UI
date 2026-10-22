@@ -9,6 +9,7 @@ import {
   appDetailsClasses,
   basicAppDetailsSectionStylerClasses,
   gamepadDialogClasses,
+  gamepadSliderClasses,
   playSectionClasses,
   quickAccessMenuClasses,
 } from "@decky/ui";
@@ -32,6 +33,12 @@ function buildCss(): string {
   const toggleRail = cls(gd, "ToggleRail");
   const toggleSwitch = cls(gd, "ToggleSwitch");
   const toggleOn = cls(gd, "On");
+  const field = cls(gd, "Field");
+  // Les lignes qui contiennent un bouton gardent le style du bouton (déjà foncé quand il a le focus).
+  const focusedField = field
+    ? [`${QAM} ${field}.gpfocus`, `${QAM} ${field}.gpfocuswithin:not(:has(.DialogButton))`].join(",")
+    : "";
+  const sliderControl = cls(gamepadSliderClasses as Record<string, string>, "SliderControl");
   // Ramène le bleu Steam vers un gris chaud, sans connaître l'élément exact qui le porte.
   const unblue = "filter: grayscale(1) sepia(0.35) !important;";
 
@@ -120,6 +127,17 @@ ${toggleSwitch ? `${QAM} ${toggleSwitch} {background: var(--nier-high) !importan
 ${qamHeader ? `${QAM} ${qamHeader}, ${QAM} ${qamHeader}::before, ${QAM} ${qamHeader}::after {box-shadow: none !important; background: transparent !important;}` : ""}
 ${toggle ? `${QAM} ${toggle} {${unblue}}` : ""}
 ${toggleRail ? `${QAM} ${toggleRail} {${unblue}}` : ""}
+${/* Ligne sélectionnée (curseur, toggle...) : le voile blanc de Steam se perd sur le beige → bandeau sombre */ ""}
+${field ? `${focusedField} {
+  background: var(--nier-low) !important;
+  color: var(--nier-high) !important;
+  border-radius: 0 !important;
+  animation: none !important;
+}
+${focusedField.split(",").map((s) => `${s} *`).join(",")} {color: var(--nier-high) !important;}
+${focusedField.split(",").map((s) => `${s}::before,${s}::after`).join(",")} {background: transparent !important; animation: none !important;}` : ""}
+${/* Curseurs (luminosité, volume) : sans le bleu, et dans le gris chaud */ ""}
+${sliderControl ? `${QAM} ${sliderControl} {${unblue}}` : ""}
 
 ${dialogCss(paper, idle, selected, inherit)}
 ${gamePageCss(paper, idle, selected, inherit)}

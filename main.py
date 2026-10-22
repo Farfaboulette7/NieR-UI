@@ -27,13 +27,11 @@ def _installed_version() -> str:
 # Square Enix / PlatinumGames : ils ne sont pas livrés avec le plugin. On lit
 # ceux que l'utilisateur a copiés sur son Deck :
 #  - bruitages : un pack Audio Loader YoRHa (~/homebrew/sounds/YoRHa Decky) ;
-#  - musique : ~/Music/NieRDeck (mp3/ogg, avec si possible l'image .png de
-#    l'onde du même nom).
+#  - musique : ~/Music/NieRDeck (mp3, ogg...).
 # Un petit serveur HTTP local (127.0.0.1, port aléatoire, jeton secret) les
 # sert à l'interface, comme le fait benderthemes.
 
 AUDIO_EXT = {".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".flac": "audio/flac", ".m4a": "audio/mp4", ".opus": "audio/ogg"}
-IMAGE_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 
 
 class _Media:
@@ -90,12 +88,10 @@ def _music_tracks():
                 continue
             m = _TRACK_PREFIX.match(stem)
             title = stem[m.end():].strip() if m else stem
-            wave = next((os.path.join(current, stem + e) for e in IMAGE_EXT if stem + e in names), None)
             found.append({
                 "id": _register(os.path.join(current, name)),
                 "title": title or stem,
                 "number": int(m.group(1)) if m and m.group(1) else None,
-                "wave": _register(wave) if wave else None,
             })
     return found
 
@@ -164,7 +160,7 @@ async def _serve(reader, writer):
             status = "206 Partial Content"
         headers = {
             **base,
-            "Content-Type": AUDIO_EXT.get(ext) or IMAGE_EXT.get(ext) or "application/octet-stream",
+            "Content-Type": AUDIO_EXT.get(ext) or "application/octet-stream",
             "Accept-Ranges": "bytes",
             "Content-Length": str(end - start + 1),
         }
