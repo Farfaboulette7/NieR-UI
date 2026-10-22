@@ -6,6 +6,7 @@ import { HomeSwitch } from "./launcher/HomeSwitch";
 import { LauncherPage } from "./launcher/LauncherPage";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
 import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
+import { useInputDiagnostic } from "./launcher/rightScroll";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 
 const ROUTE = "/nierdeck";
@@ -46,6 +47,7 @@ function useThemedWindows(): string {
 function QuickAccessPanel() {
   const [settings, loaded] = useSettings();
   const windows = useThemedWindows();
+  const input = useInputDiagnostic();
   // Ce panneau est affiché dans la fenêtre d'accès rapide : on la signale au thème.
   const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => registerSteamDocument(anchor.current?.ownerDocument), []);
@@ -91,6 +93,13 @@ function QuickAccessPanel() {
       </PanelSectionRow>
     </PanelSection>
     <UpdatesSection />
+    <PanelSection title="Diagnostic manette">
+      <PanelSectionRow>
+        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          Ouvre une page de jeu, bouge le stick droit, puis reviens ici : {input}
+        </div>
+      </PanelSectionRow>
+    </PanelSection>
     </>
   );
 }

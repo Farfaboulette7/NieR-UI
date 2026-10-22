@@ -97,7 +97,9 @@ ${QAM} [role="tabpanel"] > div[style*="sticky"]${qamTitle ? `,\n${QAM} ${qamTitl
   text-transform: uppercase;
   letter-spacing: var(--nier-tracking-title) !important;
   text-shadow: 3px 3px 0 var(--nier-shadow);
-  background: transparent !important;
+  /* Fond opaque : le contenu qui défile passe dessous sans se voir à travers le titre */
+  background: var(--nier-bg) !important;
+  z-index: 3;
   /* Steam ombre ces titres collants pour un fond sombre : remplacé par un filet */
   box-shadow: none !important;
   border-bottom: var(--nier-line) solid var(--nier-low) !important;

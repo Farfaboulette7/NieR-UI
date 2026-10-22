@@ -52,6 +52,11 @@ class Plugin:
         decky.logger.info("NieRDeck déchargé")
 
     # ───── mises à jour (releases GitHub) ─────
+    async def get_version(self):
+        """Version installée. La release GitHub est lue côté interface (fetchNoCors) :
+        le Python de Decky n'a pas toujours les certificats pour joindre GitHub."""
+        return _installed_version()
+
     async def get_update_status(self):
         try:
             return await asyncio.get_running_loop().run_in_executor(None, _update_status)
