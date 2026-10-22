@@ -6,6 +6,7 @@ import { Navigation } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 import { locale, t } from "./i18n";
+import { endLaunchScreen, startLaunchScreen } from "./LaunchScreen";
 
 declare const collectionStore: any;
 declare const appStore: any;
@@ -237,10 +238,12 @@ export function openGamePage(game: SteamGame) {
 /** Lance un jeu installé (l'installation passe par la page Steam d'origine). */
 export function launchGame(game: SteamGame) {
   try {
+    // Écran « Lancement en cours » jusqu'au démarrage : il cache l'attente et la transition de Steam.
+    startLaunchScreen(game.appid, game.name);
     SteamClient.Apps.RunGame(game.gameid, "", -1, 100);
-    toaster.toast({ title: "NieRDeck", body: t("launching", { name: game.name }) });
   } catch (e) {
     console.error("[NieRDeck] lancement", e);
+    endLaunchScreen();
     toaster.toast({ title: "NieRDeck", body: t("launchFailed", { name: game.name }) });
   }
 }

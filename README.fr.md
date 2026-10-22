@@ -18,8 +18,9 @@ Plugin [Decky Loader](https://decky.xyz) pour Steam Deck : un launcher de jeux p
   - Succès ;
   - Contacts qui ont le jeu ;
   - accès à la page Steam d'origine.
+- **Ouverture YoRHa** au démarrage du launcher, et **écran « Lancement en cours »** qui couvre l'attente de Steam jusqu'au démarrage du jeu.
 - **Thème NieR de Steam** : menu STEAM, accès rapide, boîtes de dialogue, fenêtre de volume.
-- **Bruitages et musique de fond** quand tu es dans NieRDeck. Y met la musique en pause ou la relance.
+- **Bruitages et musique de fond** quand tu es dans NieRDeck. Y met la musique en pause ou la relance ; Y maintenu passe au morceau suivant.
 - **Langues** : français et anglais.
 - **Mises à jour** depuis le plugin, sans retaper l'URL.
 
@@ -59,6 +60,7 @@ Ensuite, dans **Système** :
 | A | Ouvrir, valider |
 | B | Retour |
 | Y | Pause / lecture de la musique |
+| Y (maintenu) | Morceau suivant |
 | ← → | Régler un volume (Système) |
 
 Sur la page d'un jeu, A sur *Informations*, *Succès* ou *Contacts* donne la main à la zone de droite, où ↑ ↓ fait défiler. B rend la main au menu.
@@ -97,5 +99,6 @@ Pour une installation manuelle, copie `dist/`, `package.json`, `plugin.json` et 
 
 - Palette et pictogrammes inspirés de [YoRHA-UI-BetterDiscord](https://github.com/AccraZed/YoRHA-UI-BetterDiscord) et de [yorha](https://github.com/metakirby5/yorha).
 - Plusieurs techniques d'intégration à Steam (bibliothèque, succès, serveur audio) reprises de benderthemes.
+- Emblème YoRHa : issu de *NieR:Automata* (Square Enix), utilisé pour ce projet de fan.
 - Police : [Be Vietnam Pro](https://github.com/bettergui/BeVietnamPro), licence SIL OFL 1.1 (`src/nier-ui/fonts/OFL.txt`).
 - *NieR:Automata* est une marque de Square Enix. Projet de fan non officiel.

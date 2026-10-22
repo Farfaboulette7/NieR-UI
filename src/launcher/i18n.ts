@@ -102,7 +102,7 @@ const fr = {
   musicDisabled: "Musique désactivée",
   paused: "pause",
   tracks: "Morceaux",
-  tracksHelp: "A : choisir un morceau parmi les {n}, ou régler la lecture. Y : pause / lecture.",
+  tracksHelp: "A : choisir un morceau parmi les {n}, ou régler la lecture. Y : pause / lecture, Y maintenu : morceau suivant.",
   backgroundMusic: "Musique de fond",
   shuffle: "Lecture aléatoire",
   updates: "Mises à jour",
@@ -131,6 +131,7 @@ const fr = {
   deckyInstallerMissing: "Installateur de Decky indisponible.",
 
   // Lancement
+  launchingHeading: "Lancement en cours",
   launching: "Lancement : {name}",
   launchFailed: "Impossible de lancer {name}.",
 
@@ -254,7 +255,7 @@ const en: Record<StringKey, string> = {
   musicDisabled: "Music turned off",
   paused: "paused",
   tracks: "Tracks",
-  tracksHelp: "A: pick one of the {n} tracks, or change playback. Y: pause / play.",
+  tracksHelp: "A: pick one of the {n} tracks, or change playback. Y: pause / play, hold Y: next track.",
   backgroundMusic: "Background music",
   shuffle: "Shuffle",
   updates: "Updates",
@@ -281,6 +282,7 @@ const en: Record<StringKey, string> = {
   githubStatus: "GitHub answered {status}",
   deckyInstallerMissing: "Decky's installer is unavailable.",
 
+  launchingHeading: "Launching",
   launching: "Launching: {name}",
   launchFailed: "Couldn't launch {name}.",
 

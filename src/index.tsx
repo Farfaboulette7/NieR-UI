@@ -2,6 +2,7 @@ import { DropdownItem, PanelSection, PanelSectionRow, staticClasses, ToggleField
 import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { stopMusic } from "./launcher/audio";
+import { LaunchScreen } from "./launcher/LaunchScreen";
 import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
@@ -98,6 +99,9 @@ export default definePlugin(() => {
   const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
 
   // L'accueil Steam est enveloppé dans HomeSwitch, qui choisit selon le réglage.
+  // Écran de lancement d'un jeu, par-dessus toutes les pages Steam.
+  routerHook.addGlobalComponent("NieRDeckLaunch", LaunchScreen);
+
   const homePatch = routerHook.addPatch(HOME_ROUTE, (props: any) => {
     try {
       const original = props.children;
@@ -131,6 +135,7 @@ export default definePlugin(() => {
       stopMusic();
       routerHook.removePatch(HOME_ROUTE, homePatch);
       routerHook.removePatch(GAME_ROUTE, gamePatch);
+      routerHook.removeGlobalComponent("NieRDeckLaunch");
     },
   };
 });

@@ -4,6 +4,7 @@ import { NIER_LAYOUT_CSS } from "./layoutStyles";
 import { NIER_FONTS_CSS } from "./fonts";
 import { NIER_DETAIL_CSS } from "./detailStyles";
 import { NIER_CHROME_CSS } from "./chromeStyles";
+import { NIER_OVERLAY_CSS } from "./overlayStyles";
 
 // Aucune dépendance à Decky ici : ce module ne connaît que React.
 // La navigation manette est branchée par l'hôte, qui pilote les props.
@@ -56,7 +57,7 @@ export interface NierLayoutProps {
 
 /** Injecte police, tokens et styles. Une seule fois par arbre suffit. */
 export function NierStyles() {
-  return <style>{NIER_FONTS_CSS + NIER_TOKENS_CSS + NIER_LAYOUT_CSS + NIER_DETAIL_CSS + NIER_CHROME_CSS}</style>;
+  return <style>{NIER_FONTS_CSS + NIER_TOKENS_CSS + NIER_LAYOUT_CSS + NIER_DETAIL_CSS + NIER_CHROME_CSS + NIER_OVERLAY_CSS}</style>;
 }
 
 export function NierLayout({

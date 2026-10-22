@@ -1,6 +1,6 @@
 import { Navigation } from "@decky/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NierGameDetail, NierHint, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierMenuItem, type NierOption } from "../nier-ui";
+import { NierGameDetail, NierHint, NierIntro, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierMenuItem, type NierOption } from "../nier-ui";
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
@@ -40,6 +40,9 @@ const remembered: { tabId: string; items: Record<string, string | undefined>; co
   items: {},
 };
 
+// L'animation d'ouverture (emblème YoRHa) ne se joue qu'une fois par démarrage.
+let introPlayed = false;
+
 /** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
 interface TabView {
   menuTitle: string;
@@ -64,6 +67,10 @@ export function LauncherPage() {
   const battery = useBattery();
   const library = useSteamLibrary();
   const [settings] = useSettings();
+  const [intro, setIntro] = useState(() => !introPlayed);
+  useEffect(() => {
+    introPlayed = true;
+  }, []);
 
   const [tabId, setTabIdState] = useState(remembered.tabId);
   const [items, setItems] = useState(remembered.items);
@@ -263,6 +270,7 @@ export function LauncherPage() {
       >
         {detail.content}
       </NierLayout>
+      {intro && <NierIntro onDone={() => setIntro(false)} />}
       {overlay && (
         <NierSlideOver closing={overlay.closing} instant={overlay.instant} onClosed={() => setOverlay(null)}>
           <GamePanel

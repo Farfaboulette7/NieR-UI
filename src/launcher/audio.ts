@@ -281,6 +281,17 @@ onSettingsChange(() => {
   syncMusic();
 });
 
+/** Morceau suivant (Y maintenu) : au hasard ou dans l'ordre, selon la lecture aléatoire. */
+export function nextTrack() {
+  if (!media?.music.length || !getSettings().musicEnabled) return;
+  const t = pickTrack();
+  if (!t) return;
+  userPaused = false;
+  playSfx("confirm");
+  fade = 1;
+  play(t);
+}
+
 /** Pause / lecture (bouton Y). */
 export function toggleMusicPause() {
   if (!media?.music.length || !getSettings().musicEnabled) return;
