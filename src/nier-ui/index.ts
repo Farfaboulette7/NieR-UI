@@ -5,6 +5,7 @@ export type { NierGameDetailProps, NierField } from "./NierGameDetail";
 export { NierAchievementList } from "./NierAchievementList";
 export type { NierAchievementItem, NierAchievementListProps } from "./NierAchievementList";
 export { NierStage } from "./NierStage";
+export { NierSlideOver } from "./NierSlideOver";
 export { NierStatus, NierHint } from "./NierChrome";
 export type { NierBattery, NierButton } from "./NierChrome";
 export { NIER_TOKENS_CSS, nierTokensCss } from "./tokens";

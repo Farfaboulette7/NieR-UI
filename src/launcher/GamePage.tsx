@@ -2,10 +2,10 @@
 // À gauche : les actions (Jouer, Informations, Succès, page Steam d'origine) ;
 // à droite : l'image du jeu ou le contenu de l'entrée sélectionnée.
 import { Navigation, useParams } from "@decky/ui";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierStatus, type NierButton } from "../nier-ui";
 import { useAchievements, useStoreInfo } from "./gameDetails";
-import { stepIndex, type NierAction } from "./GamepadRoot";
+import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
 import { useSettings } from "./settings";
 import { formatLastPlayed, formatPlaytime, formatSize, getGame, launchGame, type SteamGame } from "./steamLibrary";
@@ -63,7 +63,27 @@ type ItemId = "play" | "info" | "achievements" | "steam";
 const formatDate = (seconds: number) =>
   seconds > 0 ? new Date(seconds * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "";
 
-function GamePage({ appid }: { appid: number }) {
+/** Ouvre la page Steam d'origine d'un jeu, en court-circuitant la page NieR. */
+export function openOriginalPage(appid: number) {
+  showOriginalPage(appid);
+  Navigation.Navigate(`/library/app/${appid}`);
+}
+
+export interface GamePanelProps {
+  appid: number;
+  /** B : retour à l'écran précédent. */
+  onBack: () => void;
+  /** « Page Steam d'origine » et « Installer ». */
+  onOriginal: () => void;
+  /** Reçoit le gestionnaire manette de la page, à appeler par l'écran qui la contient. */
+  actionRef: MutableRefObject<NierActionHandler | null>;
+}
+
+/**
+ * Contenu de la page d'un jeu, sans écran autour : affiché seul (route Steam)
+ * ou glissé par-dessus le launcher.
+ */
+export function GamePanel({ appid, onBack, onOriginal, actionRef }: GamePanelProps) {
   const time = useClock();
   const battery = useBattery();
   const game = useGame(appid);
@@ -73,14 +93,20 @@ function GamePage({ appid }: { appid: number }) {
 
   // Jeu inconnu de la bibliothèque : la page Steam saura mieux faire.
   useEffect(() => {
-    if (!game) showOriginalPage(appid);
+    if (!game) onOriginal();
   }, [game === null, appid]);
-  if (!game) return null;
+  if (!game) {
+    actionRef.current = null;
+    return null;
+  }
 
   const items: { id: ItemId; label: string; badge?: string; hint?: string }[] = [
     { id: "play", label: game.installed ? "Jouer" : "Installer", hint: game.installed ? "Lancer" : "Installer" },
     { id: "info", label: "Informations" },
-    { id: "achievements", label: "Succès", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined },
+    // Un jeu non-Steam n'a en général pas de succès : pas d'entrée vide.
+    ...(game.shortcut && !achievements.total
+      ? []
+      : [{ id: "achievements" as const, label: "Succès", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
     { id: "steam", label: "Page Steam d'origine", hint: "Ouvrir" },
   ];
   const current = items.find((i) => i.id === itemId) ?? items[0];
@@ -88,15 +114,15 @@ function GamePage({ appid }: { appid: number }) {
   const activate = (id: ItemId) => {
     if (id === "play") {
       if (game.installed) launchGame(game);
-      else showOriginalPage(appid); // le bouton Installer est sur la page Steam
+      else onOriginal(); // le bouton Installer est sur la page Steam
     } else if (id === "steam") {
-      showOriginalPage(appid);
+      onOriginal();
     } else {
       setItemId(id);
     }
   };
 
-  const onAction = (action: NierAction, repeat: boolean): boolean => {
+  actionRef.current = (action: NierAction, repeat: boolean): boolean => {
     const index = items.indexOf(current);
     switch (action) {
       case "up":
@@ -107,22 +133,25 @@ function GamePage({ appid }: { appid: number }) {
         activate(current.id);
         return true;
       case "back":
-        Navigation.NavigateBack();
+        onBack();
         return true;
       default:
         return true;
     }
   };
 
+  const heroes = game.heroes.concat(game.banners);
   let detail: ReactNode;
-  if (itemId === "info") {
+  if (current.id === "info") {
     const info = store.info;
     detail = game.shortcut ? (
-      <NierGameDetail image={game.heroes.concat(game.banners)} description="Jeu non-Steam : pas de fiche du Magasin." />
+      <NierGameDetail image={heroes} description="Jeu non-Steam : pas de fiche du Magasin." />
     ) : store.loading ? (
-      <NierGameDetail description="Chargement de la fiche du Magasin…" />
+      <NierGameDetail image={heroes} description="Chargement de la fiche du Magasin…" />
     ) : info ? (
       <NierGameDetail
+        image={info.images.concat(heroes)}
+        imageAlt={game.name}
         fields={[
           { label: "Genres", value: info.genres.join(", ") || "—" },
           { label: "Développeur", value: info.developers.join(", ") || "—" },
@@ -132,9 +161,9 @@ function GamePage({ appid }: { appid: number }) {
         description={info.description}
       />
     ) : (
-      <NierGameDetail description="Fiche du Magasin indisponible (hors ligne ou jeu retiré)." />
+      <NierGameDetail image={heroes} description="Fiche du Magasin indisponible (hors ligne ou jeu retiré)." />
     );
-  } else if (itemId === "achievements") {
+  } else if (current.id === "achievements") {
     detail = (
       <NierAchievementList
         unlocked={achievements.unlocked}
@@ -147,22 +176,20 @@ function GamePage({ appid }: { appid: number }) {
           icon: a.icon,
           note: a.achieved ? formatDate(a.unlockedAt) : "Verrouillé",
         }))}
-        emptyText={
-          game.shortcut ? "Les jeux non-Steam n'ont pas de succès." : achievements.loading ? "Chargement des succès…" : "Ce jeu n'a pas de succès."
-        }
+        emptyText={achievements.loading ? "Chargement des succès…" : "Ce jeu n'a pas de succès."}
       />
     );
-  } else if (itemId === "steam") {
+  } else if (current.id === "steam") {
     detail = (
       <NierGameDetail
-        image={game.heroes.concat(game.banners)}
+        image={heroes}
         description="Ouvre la page Steam habituelle de ce jeu : activité, contenu perso, communauté, propriétés. Elle reste habillée au style NieR."
       />
     );
   } else {
     detail = (
       <NierGameDetail
-        image={game.heroes.concat(game.banners)}
+        image={heroes}
         imageAlt={game.name}
         fields={[
           { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
@@ -177,33 +204,39 @@ function GamePage({ appid }: { appid: number }) {
   const confirmHint: { button: NierButton; label: string } | null = current.hint ? { button: "A", label: current.hint } : null;
 
   return (
-    <NierScreen zIndex={2} onAction={onAction}>
-      <NierLayout
-        tabs={[{ id: "game", label: game.name }]}
-        activeTabId="game"
-        onTabChange={() => {}}
-        status={<NierStatus time={time} battery={battery} />}
-        menuTitle="Menu du jeu"
-        menuItems={items.map(({ id, label, badge }) => ({ id, label, badge }))}
-        activeItemId={current.id}
-        onItemSelect={(id) => setItemId(id as ItemId)}
-        onItemActivate={(id) => activate(id as ItemId)}
-        detailTitle={current.id === "play" ? game.name : current.label}
-        footerStart={
-          <>
-            <NierHint button="STEAM" label="Menu" />
-            <NierHint button="QAM" label="Accès rapide" />
-          </>
-        }
-        footer={
-          <>
-            {confirmHint && <NierHint button={confirmHint.button} label={confirmHint.label} />}
-            <NierHint button="B" label="Retour" />
-          </>
-        }
-      >
-        {detail}
-      </NierLayout>
+    <NierLayout
+      title={game.name}
+      status={<NierStatus time={time} battery={battery} />}
+      menuTitle="Menu du jeu"
+      menuItems={items.map(({ id, label, badge }) => ({ id, label, badge }))}
+      activeItemId={current.id}
+      onItemSelect={(id) => setItemId(id as ItemId)}
+      onItemActivate={(id) => activate(id as ItemId)}
+      detailTitle={current.id === "play" ? game.name : current.label}
+      footerStart={
+        <>
+          <NierHint button="STEAM" label="Menu" />
+          <NierHint button="QAM" label="Accès rapide" />
+        </>
+      }
+      footer={
+        <>
+          {confirmHint && <NierHint button={confirmHint.button} label={confirmHint.label} />}
+          <NierHint button="B" label="Retour" />
+        </>
+      }
+    >
+      {detail}
+    </NierLayout>
+  );
+}
+
+/** Page affichée par la route Steam /library/app/<id> (ouverte par Steam, au lancement d'un jeu...). */
+function GamePage({ appid }: { appid: number }) {
+  const actionRef = useRef<NierActionHandler | null>(null);
+  return (
+    <NierScreen zIndex={2} onAction={(action, repeat) => actionRef.current?.(action, repeat) ?? false}>
+      <GamePanel appid={appid} onBack={() => Navigation.NavigateBack()} onOriginal={() => showOriginalPage(appid)} actionRef={actionRef} />
     </NierScreen>
   );
 }

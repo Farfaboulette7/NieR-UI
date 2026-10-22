@@ -69,11 +69,18 @@ export const NIER_LAYOUT_CSS = `
   padding: 24px var(--nier-gutter) 10px;
 }
 .nier-header-status {
+  flex-shrink: 0;
   margin-left: auto;
   align-self: center;
 }
 .nier-title {
   margin: 0;
+  min-width: 0;
+  /* Un nom de jeu peut être long : une ligne, coupée proprement. */
+  padding: 0 4px 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 40px;
   font-weight: 400;
   line-height: 1;

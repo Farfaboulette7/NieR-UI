@@ -10,6 +10,27 @@ export const NIER_CHROME_CSS = `
   transform-origin: 0 0;
 }
 
+/* ---------- Panneau qui glisse depuis la droite, par-dessus l'écran ---------- */
+.nier-slide-over {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  box-shadow: -10px 0 24px rgba(72, 70, 61, 0.35);
+  animation: nier-slide-in 340ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.nier-slide-over[data-closing="true"] {
+  pointer-events: none;
+  animation: nier-slide-out 280ms cubic-bezier(0.5, 0, 0.8, 0.4) both;
+}
+@keyframes nier-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes nier-slide-out {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
 /* ---------- Barre d'état (heure, batterie) ---------- */
 .nier-status {
   display: flex;

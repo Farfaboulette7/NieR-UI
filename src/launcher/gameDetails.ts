@@ -99,6 +99,8 @@ export interface StoreInfo {
   developers: string[];
   publishers: string[];
   releaseDate: string;
+  /** Captures d'écran du Magasin, puis son image d'en-tête. */
+  images: string[];
 }
 
 const storeCache = new Map<number, StoreInfo | null>();
@@ -124,6 +126,10 @@ async function fetchStoreInfo(appid: number): Promise<StoreInfo | null> {
         developers: (data.developers ?? []).map(String),
         publishers: (data.publishers ?? []).map(String),
         releaseDate: String(data.release_date?.date ?? ""),
+        images: [
+          ...(data.screenshots ?? []).slice(0, 1).map((sc: any) => String(sc?.path_full ?? "")),
+          String(data.header_image ?? ""),
+        ].filter(Boolean),
       }
     : null;
   storeCache.set(appid, info);

@@ -21,11 +21,12 @@ export interface NierMenuItem {
 }
 
 export interface NierLayoutProps {
-  /** Gros titre en haut à gauche (ex. "MENU"). */
+  /** Gros titre en haut à gauche (ex. "MENU", ou le nom d'un jeu). */
   title?: string;
-  tabs: NierTab[];
-  activeTabId: string;
-  onTabChange: (id: string) => void;
+  /** Onglets du haut, masqués s'il n'y en a qu'un (ou aucun). */
+  tabs?: NierTab[];
+  activeTabId?: string;
+  onTabChange?: (id: string) => void;
   /** Contenu aligné à droite de l'en-tête (heure, batterie...). */
   status?: ReactNode;
 
@@ -56,7 +57,7 @@ export function NierStyles() {
 
 export function NierLayout({
   title = "MENU",
-  tabs,
+  tabs = [],
   activeTabId,
   onTabChange,
   status,
@@ -92,6 +93,7 @@ export function NierLayout({
 
       <header className="nier-header">
         <h1 className="nier-title">{title}</h1>
+        {tabs.length > 1 && (
         <ul className="nier-tabs" role="tablist">
           {tabs.map((tab) => (
             <li key={tab.id}>
@@ -100,13 +102,14 @@ export function NierLayout({
                 role="tab"
                 className="nier-tab"
                 aria-selected={tab.id === activeTabId}
-                onClick={() => onTabChange(tab.id)}
+                onClick={() => onTabChange?.(tab.id)}
               >
                 {tab.label}
               </button>
             </li>
           ))}
         </ul>
+        )}
         {status && <div className="nier-header-status">{status}</div>}
       </header>
 

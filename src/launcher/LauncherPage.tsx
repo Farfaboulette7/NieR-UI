@@ -1,7 +1,9 @@
 import { Navigation } from "@decky/ui";
-import { useState } from "react";
-import { NierGameDetail, NierHint, NierLayout, NierStatus } from "../nier-ui";
-import { stepIndex, type NierAction } from "./GamepadRoot";
+import { useEffect, useRef, useState } from "react";
+import { NierGameDetail, NierHint, NierLayout, NierSlideOver, NierStatus } from "../nier-ui";
+import { GamePanel, openOriginalPage } from "./GamePage";
+import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
+import { getSettings } from "./settings";
 import { NierScreen } from "./NierScreen";
 import { formatLastPlayed, formatPlaytime, formatSize, openGamePage, useSteamLibrary, type SteamGame, type SteamLibrary } from "./steamLibrary";
 import { useBattery, useClock } from "./useSystemStatus";
@@ -50,12 +52,31 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
     setItemId(undefined);
   };
 
+  // Page du jeu glissée par-dessus le launcher (sans changer de page Steam),
+  // pour qu'elle arrive de la droite et reparte vers la droite.
+  const [overlay, setOverlay] = useState<{ appid: number; closing: boolean } | null>(null);
+  const overlayAction = useRef<NierActionHandler | null>(null);
+  const closeOverlay = () => setOverlay((o) => (o ? { ...o, closing: true } : o));
+  // Filet de sécurité si la fin d'animation n'arrive pas (fenêtre masquée...).
+  useEffect(() => {
+    if (!overlay?.closing) return;
+    const t = setTimeout(() => setOverlay(null), 600);
+    return () => clearTimeout(t);
+  }, [overlay?.closing]);
+
+  const open = (target: SteamGame) => {
+    // Page NieR désactivée : on va sur la page Steam.
+    if (getSettings().replaceGamePage) setOverlay({ appid: target.appid, closing: false });
+    else openGamePage(target);
+  };
+
   const launch = (id: string) => {
     const target = games.find((g) => String(g.appid) === id);
-    if (target) openGamePage(target);
+    if (target) open(target);
   };
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
+    if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
     const index = game ? games.indexOf(game) : 0;
     switch (action) {
       case "up":
@@ -70,7 +91,7 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
         return true;
       }
       case "confirm":
-        if (game) openGamePage(game);
+        if (game) open(game);
         return true;
       case "back":
         if (mode === "standalone") {
@@ -126,6 +147,16 @@ export function LauncherPage({ mode = "standalone" }: { mode?: LauncherMode }) {
           <NierGameDetail description={library.error ?? tab.empty} />
         )}
       </NierLayout>
+      {overlay && (
+        <NierSlideOver closing={overlay.closing} onClosed={() => setOverlay(null)}>
+          <GamePanel
+            appid={overlay.appid}
+            onBack={closeOverlay}
+            onOriginal={() => openOriginalPage(overlay.appid)}
+            actionRef={overlayAction}
+          />
+        </NierSlideOver>
+      )}
     </NierScreen>
   );
 }
