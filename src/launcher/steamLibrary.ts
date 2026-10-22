@@ -56,16 +56,72 @@ function appStoreUrls(methods: string[], app: any): string[] {
   return [];
 }
 
+// ───────────── Temps de jeu des jeux non-Steam ─────────────
+// Pour les raccourcis (jeux ajoutés à la main, Heroic...), l'aperçu de la
+// bibliothèque ne contient pas le temps de jeu : Steam le garde dans les
+// « détails » de l'app, chargés seulement quand on ouvre sa page. On les
+// demande nous-mêmes, une fois par jeu, et on garde le résultat.
+const detailsPlaytime = new Map<number, number>();
+const detailsRequested = new Set<number>();
+
+function requestDetailsPlaytime(appid: number) {
+  if (detailsRequested.has(appid)) return;
+  detailsRequested.add(appid);
+  try {
+    let reg: any = null;
+    const stop = () => {
+      try {
+        reg?.unregister?.();
+      } catch {
+        /* déjà libéré */
+      }
+      reg = null;
+    };
+    reg = SteamClient?.Apps?.RegisterForAppDetails?.(appid, (details: any) => {
+      const minutes = firstPositive(details?.nPlaytimeForever, details?.minutes_playtime_forever);
+      if (minutes > 0) {
+        detailsPlaytime.set(appid, Math.round(minutes));
+        stop();
+      }
+    });
+    setTimeout(stop, 15_000); // pas de réponse : on n'écoute pas indéfiniment
+  } catch (e) {
+    console.error("[NieRDeck] détails de l'app", appid, e);
+  }
+}
+
+/** Temps de jeu déjà chargé par Steam (si la page du jeu a été ouverte). */
+function storedDetailsPlaytime(appid: number): number {
+  try {
+    const store = (globalThis as any).appDetailsStore;
+    const details = store?.GetAppDetails?.(appid) ?? store?.m_mapAppData?.get?.(appid)?.details;
+    return firstPositive(details?.nPlaytimeForever, details?.minutes_playtime_forever);
+  } catch {
+    return 0;
+  }
+}
+
+function readPlaytime(a: any, appid: number, shortcut: boolean): number {
+  const overview = firstPositive(a.minutes_playtime_forever, a.minutes_playtime_forever_local, a.minutes_playtime_forever_total);
+  if (overview > 0) return Math.round(overview);
+  const known = detailsPlaytime.get(appid) ?? storedDetailsPlaytime(appid);
+  if (known > 0) return Math.round(known);
+  // Seulement pour les jeux déjà lancés au moins une fois, pour ne pas interroger Steam pour rien.
+  if (shortcut || firstPositive(a.rt_last_time_played, a.rt_last_time_locally_played) > 0) requestDetailsPlaytime(appid);
+  return 0;
+}
+
 function toGame(a: any): SteamGame | null {
   if (!a || (a.app_type !== APP_TYPE_GAME && a.app_type !== APP_TYPE_SHORTCUT)) return null;
   const shortcut = a.app_type === APP_TYPE_SHORTCUT;
   const name = String(a.display_name ?? a.sort_as ?? a.appid);
+  const appid = Number(a.appid);
   return {
-    appid: Number(a.appid),
+    appid,
     gameid: String(a.m_gameid ?? a.gameid ?? a.appid),
     name,
     sortName: String(a.sort_as ?? name),
-    playtime: Math.round(firstPositive(a.minutes_playtime_forever, a.minutes_playtime_forever_local)),
+    playtime: readPlaytime(a, appid, shortcut),
     lastPlayed: firstPositive(a.rt_last_time_played, a.rt_last_time_locally_played),
     installed: shortcut || !!(a.installed ?? a.local_per_client_data?.installed),
     sizeOnDisk: firstPositive(a.size_on_disk, a.local_per_client_data?.size_on_disk),

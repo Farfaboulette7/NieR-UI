@@ -8,6 +8,16 @@ Plugin [Decky Loader](https://decky.xyz) pour Steam Deck : un launcher de jeux p
 - `src/launcher/` : la page du launcher côté Decky (état, données).
 - `src/index.tsx` : le point d'entrée du plugin (route `/nierdeck` et bouton dans le menu d'accès rapide).
 
+## Installation sur le Steam Deck
+
+Chaque push sur `main` publie automatiquement une release. Dans Decky : Paramètres → Développeur → « Installer un plugin depuis une URL », avec :
+
+```
+https://github.com/Farfaboulette7/NieR-UI/releases/latest/download/NieRDeck.zip
+```
+
+La même URL installe toujours la dernière version.
+
 ## Build
 
 ```bash
