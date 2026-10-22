@@ -60,11 +60,11 @@ function QuickAccessPanel() {
       </PanelSectionRow>
       <PanelSectionRow>
         <ToggleField
-          label="Thème NieR des menus Steam"
+          label="Thème NieR de Steam"
           description={
             settings.themeSteamMenus
               ? `Fenêtres habillées : ${windows || "aucune pour l'instant"}`
-              : "Habille le menu STEAM et l'accès rapide aux couleurs YoRHA."
+              : "Habille le menu STEAM, l'accès rapide, les boîtes de dialogue et les pages de jeu aux couleurs YoRHA."
           }
           checked={settings.themeSteamMenus}
           disabled={!loaded}

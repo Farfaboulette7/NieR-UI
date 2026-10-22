@@ -4,7 +4,14 @@
 // classes CSS sont hachées, on s'appuie donc sur des repères stables relevés
 // dans leur HTML : identifiants, rôles ARIA, `.DialogButton`, et `gpfocus`
 // (posée par Steam sur l'élément sélectionné à la manette).
-import { gamepadDialogClasses, quickAccessMenuClasses } from "@decky/ui";
+import {
+  appActionButtonClasses,
+  appDetailsClasses,
+  basicAppDetailsSectionStylerClasses,
+  gamepadDialogClasses,
+  playSectionClasses,
+  quickAccessMenuClasses,
+} from "@decky/ui";
 import { NIER_FONTS_CSS, nierTokensCss } from "../nier-ui";
 
 const STYLE_ID = "nierdeck-menu-theme";
@@ -53,7 +60,8 @@ function buildCss(): string {
 
   return `
 ${NIER_FONTS_CSS}
-${nierTokensCss(`${MAIN}, ${QAM}`)}
+${/* Variables posées à la racine : menus, boîtes de dialogue et pages de jeu en profitent */ ""}
+${nierTokensCss(":root")}
 
 /* ---------- Menu principal (STEAM, à gauche) ---------- */
 ${MAIN} [role="menu"] {${paper} border-right: var(--nier-line) solid var(--nier-low) !important;}
@@ -110,6 +118,82 @@ ${toggleSwitch ? `${QAM} ${toggleSwitch} {background: var(--nier-high) !importan
 ${qamHeader ? `${QAM} ${qamHeader}, ${QAM} ${qamHeader}::before, ${QAM} ${qamHeader}::after {box-shadow: none !important; background: transparent !important;}` : ""}
 ${toggle ? `${QAM} ${toggle} {${unblue}}` : ""}
 ${toggleRail ? `${QAM} ${toggleRail} {${unblue}}` : ""}
+
+${dialogCss(paper, idle, selected, inherit)}
+${gamePageCss(paper, idle, selected, inherit)}
+`;
+}
+
+/** Ne garde que les sélecteurs dont toutes les classes existent, joints par des virgules. */
+const selectors = (...list: (string | null)[]) => list.filter(Boolean).join(",\n");
+
+// ---------- Boîtes de dialogue (« Quitter le jeu ? »...) ----------
+// Classes globales de Steam, non hachées : DialogContent, DialogHeader, DialogButton...
+function dialogCss(paper: string, idle: string, selected: string, inherit: string): string {
+  const D = ".ModalOverlayContent";
+  return `
+/* ---------- Boîtes de dialogue ---------- */
+${D}.ModalOverlayBackground {background: rgba(69, 65, 56, 0.55) !important;}
+${D} .GenericDialogBase,
+${D} .DialogContent {
+  ${paper}
+  border: var(--nier-line) solid var(--nier-low) !important;
+  border-radius: 0 !important;
+  box-shadow: var(--nier-drop) var(--nier-drop) 0 var(--nier-shadow) !important;
+}
+${D} .DialogContent * {${inherit}}
+${D} .DialogContent_InnerWidth,
+${D} .DialogBody,
+${D} .DialogFooter {background: transparent !important;}
+${D} .DialogHeader {
+  text-transform: uppercase;
+  letter-spacing: var(--nier-tracking-title) !important;
+  text-shadow: 3px 3px 0 var(--nier-shadow);
+  border-bottom: var(--nier-line) solid var(--nier-low) !important;
+  padding-bottom: 8px !important;
+}
+${D} .DialogButton {${idle}}
+${D} .DialogButton.gpfocus,
+${D} .DialogButton:hover {${selected}}
+`;
+}
+
+// ---------- Page d'un jeu (/library/app/<id>) ----------
+// Classes hachées : leurs vrais noms viennent de @decky/ui (retrouvés dans Steam à l'exécution).
+function gamePageCss(paper: string, idle: string, selected: string, inherit: string): string {
+  const ad = appDetailsClasses as Record<string, string>;
+  const ps = playSectionClasses as Record<string, string>;
+  const ab = appActionButtonClasses as Record<string, string>;
+  const bas = basicAppDetailsSectionStylerClasses as Record<string, string>;
+
+  // Conteneurs de la page : servent aussi à limiter les règles des onglets à cette page.
+  const scopes = [cls(ad, "Container"), cls(bas, "AppDetailsRoot")].filter(Boolean) as string[];
+  const inScopes = (inner: string) => scopes.map((s) => `${s} ${inner}`).join(",\n");
+
+  const playBar = selectors(cls(ps, "PlayBar"), cls(ad, "PlayBar"));
+  const playButton = selectors(cls(ab, "PlayButton"), cls(ab, "Green"));
+  const playButtonFocus = [cls(ab, "PlayButton"), cls(ab, "Green")]
+    .filter(Boolean)
+    .flatMap((c) => [`${c}.gpfocus`, `${c}.gpfocuswithin`, `${c}:hover`])
+    .join(",\n");
+  const menuButton = cls(ps, "MenuButton");
+  const pageBackground = selectors(cls(ad, "InnerContainer"), cls(ad, "ScrollContainer"), cls(bas, "AppDetailsContent"));
+
+  return `
+/* ---------- Page d'un jeu ---------- */
+${pageBackground ? `${pageBackground} {${paper}}` : ""}
+${playBar ? `${playBar} {${paper} border-top: var(--nier-line) solid var(--nier-low) !important; border-bottom: var(--nier-line) solid var(--nier-low) !important; box-shadow: none !important;}` : ""}
+${playBar ? `${playBar.split(",\n").map((s) => `${s} *`).join(",\n")} {${inherit}}` : ""}
+${cls(ps, "PlayBarLabel") ? `${cls(ps, "PlayBarLabel")} {color: var(--nier-mid) !important; letter-spacing: var(--nier-tracking-wide) !important;}` : ""}
+${cls(ps, "PlayBarDetailLabel") ? `${cls(ps, "PlayBarDetailLabel")} {color: var(--nier-low) !important;}` : ""}
+${playButton ? `${playButton} {${idle}}` : ""}
+${playButtonFocus ? `${playButtonFocus} {${selected}}` : ""}
+${cls(ab, "PlayButtonContainer") ? `${cls(ab, "PlayButtonContainer")} {background: transparent !important; box-shadow: none !important;}` : ""}
+${menuButton ? `${menuButton} {${idle}}\n${menuButton}.gpfocus, ${menuButton}:hover {${selected}}` : ""}
+${scopes.length ? `${inScopes('[role="tablist"]')} {background: var(--nier-high-mid) !important; border-bottom: var(--nier-line) solid var(--nier-low) !important;}` : ""}
+${scopes.length ? `${inScopes('[role="tab"]')} {background: transparent !important; color: var(--nier-low) !important; border-radius: 0 !important; font-family: var(--nier-font) !important;}` : ""}
+${scopes.length ? `${inScopes('[role="tab"][aria-selected="true"]')},\n${inScopes('[role="tab"].gpfocus')} {${selected}}` : ""}
+${scopes.length ? `${inScopes('[role="tab"] *')} {${inherit}}` : ""}
 `;
 }
 
