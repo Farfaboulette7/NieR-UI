@@ -241,6 +241,9 @@ export const NIER_LAYOUT_CSS = `
   background-color: var(--nier-high-trans);
   box-shadow: var(--nier-drop) var(--nier-drop) 0 var(--nier-shadow);
 }
+.nier-menu-item[data-muted="true"]:not([aria-selected="true"]) {
+  opacity: 0.6;
+}
 .nier-detail[data-focused="true"] {
   outline: calc(var(--nier-line) * 2) solid var(--nier-low);
   outline-offset: 4px;

@@ -30,8 +30,8 @@ import { useWishlist, type Wishlist } from "./wishlist";
 // nier-ui ne fait que dessiner. Affichée à la place de l'accueil Steam.
 
 const TABS: { id: string; label: StringKey }[] = [
-  { id: "library", label: "tabLibrary" },
   { id: "recent", label: "tabRecent" },
+  { id: "library", label: "tabLibrary" },
   { id: "collections", label: "tabCollections" },
   { id: "store", label: "tabStore" },
   { id: "system", label: "tabSystem" },
@@ -165,7 +165,8 @@ export function LauncherPage() {
   // ───── Contenu de l'onglet courant ─────
   let view: TabView;
   if (tabId === "library") {
-    view = gamesView(t("installedGames"), library.installed, library.error ?? t("noInstalledGames"), openGame);
+    view = gamesView(t("tabLibrary"), library.owned, library.error ?? t("noInstalledGames"), openGame);
+    view.menuTitle = t("libraryCount", { installed: library.installed.length, total: library.owned.length });
   } else if (tabId === "recent") {
     view = gamesView(t("recentlyPlayed"), library.recent, library.error ?? t("noRecentGames"), openGame);
   } else if (tabId === "collections") {
@@ -353,7 +354,8 @@ function gamesView(title: string, games: SteamGame[], empty: string, open: (g: S
   const find = (id?: string) => games.find((g) => String(g.appid) === id);
   return {
     menuTitle: `${title}${games.length ? ` · ${games.length}` : ""}`,
-    items: games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true) })),
+    // Jeux non installés sur le Deck : estompés.
+    items: games.map((g) => ({ id: String(g.appid), label: g.name, badge: formatPlaytime(g.playtime, true), muted: !g.installed })),
     detail: (id) => {
       const game = find(id);
       return game ? { title: game.name, content: gameDetail(game) } : { title, content: <NierGameDetail art={false} description={empty} /> };

@@ -37,6 +37,7 @@ const fr = {
 
   // Listes de jeux
   installedGames: "Jeux installés",
+  libraryCount: "{installed} installés · {total} jeux",
   noInstalledGames: "Aucun jeu installé.",
   recentlyPlayed: "Joués récemment",
   noRecentGames: "Aucune session de jeu récente.",
@@ -127,6 +128,7 @@ const fr = {
   diagnosticDesc: "Ce que NieRDeck lit de Steam et de Decky. Utile pour signaler un problème.",
   diagSteamGames: "Jeux Steam sur le Deck",
   diagShortcuts: "Raccourcis du Deck",
+  diagRemote: "d'un autre PC, ignorés",
   steamSettingsDesc: "Ouvre les paramètres du Steam Deck : réseau, affichage, son, contrôleur…",
 
   // Mises à jour (panneau d'accès rapide et notifications)
@@ -214,6 +216,7 @@ const en: Record<StringKey, string> = {
   tabSystem: "System",
 
   installedGames: "Installed games",
+  libraryCount: "{installed} installed · {total} games",
   noInstalledGames: "No installed games.",
   recentlyPlayed: "Recently played",
   noRecentGames: "No recent play sessions.",
@@ -301,6 +304,7 @@ const en: Record<StringKey, string> = {
   diagnosticDesc: "What NieRDeck reads from Steam and Decky. Useful to report a problem.",
   diagSteamGames: "Steam games on the Deck",
   diagShortcuts: "Deck shortcuts",
+  diagRemote: "from another PC, ignored",
   steamSettingsDesc: "Opens the Steam Deck settings: network, display, audio, controller…",
 
   updateToast: "Update {version} available: ··· → NieRDeck → Update.",

@@ -120,14 +120,13 @@ function readPlaytime(a: any, appid: number, shortcut: boolean): number {
 // ───────────── Installé sur ce Deck, ou seulement sur un autre PC ─────────────
 // Avec la retransmission (Remote Play), Steam compte comme « installé » un jeu
 // présent sur un autre PC du réseau, et liste aussi les raccourcis non-Steam de
-// ce PC. Les données de l'aperçu ne suffisent pas à les distinguer : on demande
-// à Steam ce qui est vraiment sur le Deck.
-//  - jeux Steam : le contenu des dossiers d'installation montés ;
-//  - raccourcis non-Steam : ceux du Deck (GetAllShortcuts, comme le plugin SteamGridDB).
+// ce PC (relevé sur le Deck : installed = true dans les deux cas).
+//  - jeux Steam : on lit le contenu des dossiers d'installation montés du Deck ;
+//  - raccourcis non-Steam : ceux du Deck ont une entrée locale (client "0") dans
+//    per_client_data / local_per_client_data ; ceux d'un autre PC n'ont que ce PC.
 
 interface LocalIndex {
   steam: Set<number>;
-  shortcuts: Set<number> | null; // null : API indisponible
 }
 
 let localIndex: LocalIndex | null = null;
@@ -143,15 +142,7 @@ async function readLocalIndex(): Promise<LocalIndex> {
     if (folder?.bIsMounted === false) continue; // carte SD retirée
     for (const app of folder?.vecApps ?? []) steam.add(Number(app?.nAppID));
   }
-  let shortcuts: Set<number> | null = null;
-  try {
-    const list: any[] | undefined = await SteamClient?.Apps?.GetAllShortcuts?.();
-    // Liste vide : plutôt une API muette que zéro raccourci, on ne filtre pas.
-    if (Array.isArray(list) && list.length) shortcuts = new Set(list.map((s) => Number(s?.appid ?? s?.data?.appid ?? s)));
-  } catch {
-    shortcuts = null;
-  }
-  return { steam, shortcuts };
+  return { steam };
 }
 
 /** Relit (au plus toutes les 30 s) ce qui est installé sur le Deck. */
@@ -172,15 +163,33 @@ export function refreshLocalIndex(force = false) {
 
 /** Pour Système → Diagnostic : ce que NieRDeck sait des jeux présents sur le Deck. */
 export function libraryDiagnostic(): { steam: string; shortcuts: string } {
-  if (!localIndex) return { steam: localError || "…", shortcuts: localError || "…" };
+  let local = 0;
+  let remote = 0;
+  try {
+    for (const a of appsOf(collectionStore?.GetCollection?.("type-games"))) {
+      if (a?.app_type !== APP_TYPE_SHORTCUT) continue;
+      if (localShortcut(a)) local++;
+      else remote++;
+    }
+  } catch {
+    /* ignore */
+  }
   return {
-    steam: String(localIndex.steam.size),
-    shortcuts: localIndex.shortcuts ? String(localIndex.shortcuts.size) : "—",
+    steam: localIndex ? String(localIndex.steam.size) : localError || "…",
+    shortcuts: `${local} (+${remote} ${t("diagRemote")})`,
   };
 }
 
+/** Raccourci non-Steam présent sur ce Deck (et non sur un autre PC du réseau). */
+function localShortcut(a: any): boolean {
+  if (a?.local_per_client_data) return a.local_per_client_data.installed !== false;
+  const clients: any[] = Array.isArray(a?.per_client_data) ? a.per_client_data : [];
+  // Sans aucune donnée de client : on le garde (ancien Steam).
+  return !clients.length || clients.some((c) => String(c?.clientid) === "0");
+}
+
 function installedHere(a: any, appid: number, shortcut: boolean): boolean {
-  if (shortcut) return localIndex?.shortcuts ? localIndex.shortcuts.has(appid) : true;
+  if (shortcut) return localShortcut(a);
   if (localIndex) return localIndex.steam.has(appid);
   return !!(a?.local_per_client_data?.installed ?? a?.installed);
 }
@@ -239,6 +248,8 @@ export interface SteamCollection {
 
 export interface SteamLibrary {
   installed: SteamGame[];
+  /** Tous les jeux possédés : installés sur le Deck d'abord, puis les autres. */
+  owned: SteamGame[];
   recent: SteamGame[];
   /** Collections du compte (favoris en tête), comme l'onglet Collections de Steam. */
   collections: SteamCollection[];
@@ -246,7 +257,7 @@ export interface SteamLibrary {
   error?: string;
 }
 
-const EMPTY: SteamLibrary = { installed: [], recent: [], collections: [] };
+const EMPTY: SteamLibrary = { installed: [], owned: [], recent: [], collections: [] };
 
 export function readLibrary(): SteamLibrary {
   try {
@@ -272,8 +283,10 @@ export function readLibrary(): SteamLibrary {
       String(x?.displayName ?? "").localeCompare(String(y?.displayName ?? ""), locale(), { numeric: true, sensitivity: "base" }),
     );
     user.forEach(addCollection);
+    const installed = games.filter((g) => g.installed).sort(byName);
     return {
-      installed: games.filter((g) => g.installed).sort(byName),
+      installed,
+      owned: [...installed, ...games.filter((g) => !g.installed).sort(byName)],
       recent: games
         .filter((g) => g.lastPlayed > 0)
         .sort((x, y) => y.lastPlayed - x.lastPlayed)

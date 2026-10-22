@@ -19,6 +19,8 @@ export interface NierMenuItem {
   label: string;
   /** Texte court aligné à droite (compteur, statut...). */
   badge?: string;
+  /** Estompé (jeu non installé...). */
+  muted?: boolean;
 }
 
 export interface NierLayoutProps {
@@ -133,6 +135,7 @@ export function NierLayout({
                   role="option"
                   className="nier-menu-item"
                   aria-selected={item.id === activeItemId}
+                  data-muted={!!item.muted}
                   onMouseEnter={() => onItemSelect(item.id)}
                   onFocus={() => onItemSelect(item.id)}
                   onClick={() => onItemActivate?.(item.id)}

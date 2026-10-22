@@ -41,21 +41,15 @@ export function hasAudioLoader(): boolean {
   }
 }
 
-/** Appelle une méthode du backend d'une autre extension Decky. */
-async function callPlugin(plugin: string, method: string, ...args: unknown[]): Promise<any> {
-  const backend = deckyBackend();
-  if (backend?.call) {
-    try {
-      return await backend.call("loader/call", plugin, method, ...args);
-    } catch (e) {
-      console.warn("[NieRDeck] loader/call", e);
-    }
-  }
-  // Autre voie : la connexion interne de @decky/api, au nom de l'autre extension.
-  const internals = (window as any).__DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit;
-  const api = internals?.connect?.(2, plugin) ?? internals?.connect?.(1, plugin);
-  if (!api?.call) throw new Error("Decky");
-  return api.call(method, ...args);
+/**
+ * Appelle une méthode du backend d'une autre extension Decky. Audio Loader est une
+ * extension « ancienne génération » : Decky l'appelle par loader/call_legacy_plugin_method,
+ * avec des arguments nommés, et répond { success, result } (vérifié sur le Deck).
+ */
+async function callLegacyPlugin(plugin: string, method: string, args: Record<string, unknown>): Promise<any> {
+  const response = await deckyBackend()?.call?.("loader/call_legacy_plugin_method", plugin, method, args);
+  if (!response?.success) throw new Error(String(response?.result ?? `${plugin} : ${method}`));
+  return response.result;
 }
 
 async function installAudioLoader() {
@@ -82,8 +76,8 @@ export async function setupNierSounds() {
       await installAudioLoader();
     }
     setStep("downloadingPack");
-    const result = await callPlugin(AUDIO_LOADER, "download_theme_from_url", NIER_PACK_ID, THEMES_API);
-    if (result && result.success === false) throw new Error(String(result.message ?? "Audio Loader"));
+    const result = await callLegacyPlugin(AUDIO_LOADER, "download_theme_from_url", { id: NIER_PACK_ID, url: THEMES_API });
+    if (result && result.success === false) throw new Error(String(result.message ?? AUDIO_LOADER));
     // Le pack est extrait dans ~/homebrew/sounds : on le relit jusqu'à le trouver.
     for (let i = 0; i < 20; i++) {
       const media = await loadMedia(true);
