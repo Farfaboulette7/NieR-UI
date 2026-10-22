@@ -4,6 +4,7 @@ import { NierGameDetail, NierHint, NierLayout, NierMeter, NierOptionList, NierSl
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
+import { LANGS, t, type StringKey } from "./i18n";
 import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
@@ -25,12 +26,12 @@ import { useWishlist, type Wishlist } from "./wishlist";
 // Côté Decky : cette page possède l'état, les données et l'entrée manette ;
 // nier-ui ne fait que dessiner. Affichée à la place de l'accueil Steam.
 
-const TABS = [
-  { id: "library", label: "Bibliothèque" },
-  { id: "recent", label: "Récents" },
-  { id: "collections", label: "Collections" },
-  { id: "store", label: "Boutique" },
-  { id: "system", label: "Système" },
+const TABS: { id: string; label: StringKey }[] = [
+  { id: "library", label: "tabLibrary" },
+  { id: "recent", label: "tabRecent" },
+  { id: "collections", label: "tabCollections" },
+  { id: "store", label: "tabStore" },
+  { id: "system", label: "tabSystem" },
 ];
 
 // Sélection mémorisée : on la retrouve en revenant d'une autre page Steam.
@@ -113,13 +114,13 @@ export function LauncherPage() {
   // ───── Contenu de l'onglet courant ─────
   let view: TabView;
   if (tabId === "library") {
-    view = gamesView("Jeux installés", library.installed, library.error ?? "Aucun jeu installé.", openGame);
+    view = gamesView(t("installedGames"), library.installed, library.error ?? t("noInstalledGames"), openGame);
   } else if (tabId === "recent") {
-    view = gamesView("Joués récemment", library.recent, library.error ?? "Aucune session de jeu récente.", openGame);
+    view = gamesView(t("recentlyPlayed"), library.recent, library.error ?? t("noRecentGames"), openGame);
   } else if (tabId === "collections") {
     const collection = library.collections.find((c) => c.id === collectionId);
     view = collection
-      ? gamesView(collection.name, collection.games, "Collection vide.", openGame, () => {
+      ? gamesView(collection.name, collection.games, t("emptyCollection"), openGame, () => {
           playSfx("back");
           setCollectionId(undefined);
           return true;
@@ -225,7 +226,7 @@ export function LauncherPage() {
     // Plein écran, sous les autres pages Steam (z-index bas).
     <NierScreen zIndex={1} onAction={onAction}>
       <NierLayout
-        tabs={TABS}
+        tabs={TABS.map((x) => ({ id: x.id, label: t(x.label) }))}
         activeTabId={tabId}
         onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
@@ -238,24 +239,24 @@ export function LauncherPage() {
         detailFocused={panelRow !== undefined}
         footerStart={
           <>
-            <NierHint button="STEAM" label="Menu" />
-            <NierHint button="QAM" label="Accès rapide" />
+            <NierHint button="STEAM" label={t("menu")} />
+            <NierHint button="QAM" label={t("quickAccess")} />
             <MusicFooter onClick={showMusic} />
           </>
         }
         footer={
           panelRow !== undefined ? (
             <>
-              <NierHint button="UPDOWN" label="Choisir" />
-              <NierHint button="A" label="Valider" />
-              <NierHint button="B" label="Retour" />
+              <NierHint button="UPDOWN" label={t("choose")} />
+              <NierHint button="A" label={t("confirm")} />
+              <NierHint button="B" label={t("back")} />
             </>
           ) : (
             <>
-              <NierHint button={["L1", "R1"]} label="Onglets" />
-              {current && view.adjustable?.(current.id) && <NierHint button="LEFTRIGHT" label="Régler" />}
+              <NierHint button={["L1", "R1"]} label={t("tabs")} />
+              {current && view.adjustable?.(current.id) && <NierHint button="LEFTRIGHT" label={t("adjust")} />}
               {hint && <NierHint button="A" label={hint} />}
-              {view.back && <NierHint button="B" label="Retour" />}
+              {view.back && <NierHint button="B" label={t("back")} />}
             </>
           )
         }
@@ -285,10 +286,10 @@ function gameDetail(game: SteamGame): ReactNode {
       image={game.banners}
       imageAlt={game.name}
       fields={[
-        { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
-        { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
-        { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
-        { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
+        { label: t("playtime"), value: formatPlaytime(game.playtime) },
+        { label: t("lastSession"), value: formatLastPlayed(game.lastPlayed) },
+        { label: t("size"), value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
+        { label: t("status"), value: game.installed ? t("installed") : t("notInstalled") },
       ]}
     />
   );
@@ -308,7 +309,7 @@ function gamesView(title: string, games: SteamGame[], empty: string, open: (g: S
       const game = find(id);
       if (game) open(game);
     },
-    hint: () => "Ouvrir",
+    hint: () => t("open"),
     back,
   };
 }
@@ -316,11 +317,11 @@ function gamesView(title: string, games: SteamGame[], empty: string, open: (g: S
 function collectionsView(collections: SteamCollection[], open: (id: string) => void): TabView {
   const find = (id?: string) => collections.find((c) => c.id === id);
   return {
-    menuTitle: `Collections${collections.length ? ` · ${collections.length}` : ""}`,
+    menuTitle: `${t("tabCollections")}${collections.length ? ` · ${collections.length}` : ""}`,
     items: collections.map((c) => ({ id: c.id, label: c.name, badge: String(c.games.length) })),
     detail: (id) => {
       const c = find(id);
-      if (!c) return { title: "Collections", content: <NierGameDetail art={false} description="Aucune collection. Crée-en dans la bibliothèque Steam." /> };
+      if (!c) return { title: t("tabCollections"), content: <NierGameDetail art={false} description={t("noCollections")} /> };
       const playtime = c.games.reduce((sum, g) => sum + g.playtime, 0);
       const recent = [...c.games].sort((x, y) => y.lastPlayed - x.lastPlayed)[0];
       return {
@@ -330,33 +331,33 @@ function collectionsView(collections: SteamCollection[], open: (id: string) => v
             image={(recent ?? c.games[0])?.banners}
             imageAlt={c.name}
             fields={[
-              { label: "Jeux", value: String(c.games.length) },
-              { label: "Installés", value: String(c.games.filter((g) => g.installed).length) },
-              { label: "Temps de jeu", value: formatPlaytime(playtime) },
-              { label: "Dernier joué", value: recent && recent.lastPlayed ? recent.name : "—" },
+              { label: t("games"), value: String(c.games.length) },
+              { label: t("installedCount"), value: String(c.games.filter((g) => g.installed).length) },
+              { label: t("playtime"), value: formatPlaytime(playtime) },
+              { label: t("lastPlayedGame"), value: recent && recent.lastPlayed ? recent.name : "—" },
             ]}
           />
         ),
       };
     },
     activate: open,
-    hint: () => "Ouvrir",
+    hint: () => t("open"),
   };
 }
 
 function wishlistView(wishlist: Wishlist): TabView {
   const find = (id?: string) => wishlist.items.find((w) => String(w.appid) === id);
   const empty = wishlist.loading
-    ? "Chargement de la liste de souhaits…"
+    ? t("wishlistLoading")
     : wishlist.error
-      ? `Liste de souhaits indisponible (${wishlist.error}).`
-      : "Liste de souhaits vide, ou privée. Pour qu'elle apparaisse : profil Steam → Confidentialité → Détails des jeux → Public.";
+      ? t("wishlistError", { error: wishlist.error })
+      : t("wishlistEmpty");
   return {
-    menuTitle: `Liste de souhaits${wishlist.items.length ? ` · ${wishlist.items.length}` : ""}`,
+    menuTitle: `${t("wishlist")}${wishlist.items.length ? ` · ${wishlist.items.length}` : ""}`,
     items: wishlist.items.map((w) => ({ id: String(w.appid), label: w.name, badge: w.discount ? `-${w.discount}%` : w.price || undefined })),
     detail: (id) => {
       const w = find(id);
-      if (!w) return { title: "Boutique", content: <NierGameDetail art={false} description={empty} /> };
+      if (!w) return { title: t("tabStore"), content: <NierGameDetail art={false} description={empty} /> };
       return {
         title: w.name,
         content: (
@@ -364,8 +365,8 @@ function wishlistView(wishlist: Wishlist): TabView {
             image={w.images}
             imageAlt={w.name}
             fields={[
-              { label: "Prix", value: w.price ? (w.discount ? `${w.price} (-${w.discount} %)` : w.price) : "—" },
-              { label: "Sortie", value: w.releaseDate || "—" },
+              { label: t("price"), value: w.price ? (w.discount ? `${w.price} (-${w.discount} %)` : w.price) : "—" },
+              { label: t("release"), value: w.releaseDate || "—" },
             ]}
           />
         ),
@@ -375,28 +376,16 @@ function wishlistView(wishlist: Wishlist): TabView {
       playSfx("confirm");
       openStorePage(Number(id));
     },
-    hint: () => "Magasin",
+    hint: () => t("storeHint"),
   };
 }
 
 // ───────────── Système : réglages de l'extension ─────────────
 
-const TOGGLES: { id: keyof NierSettings; label: string; description: string }[] = [
-  {
-    id: "replaceHome",
-    label: "Lancer au démarrage",
-    description: "Affiche NieRDeck à la place de l'accueil Steam, dès le démarrage du mode Gaming. Désactivé, l'accueil Steam revient.",
-  },
-  {
-    id: "replaceGamePage",
-    label: "Page de jeu NieR",
-    description: "Remplace la page d'un jeu Steam par la page NieR (Jouer, Informations, Succès).",
-  },
-  {
-    id: "themeSteamMenus",
-    label: "Thème NieR de Steam",
-    description: "Habille le menu STEAM, l'accès rapide, les boîtes de dialogue et les pages de jeu aux couleurs YoRHA.",
-  },
+const TOGGLES: { id: "replaceHome" | "replaceGamePage" | "themeSteamMenus"; label: StringKey; description: StringKey }[] = [
+  { id: "replaceHome", label: "replaceHome", description: "replaceHomeDesc" },
+  { id: "replaceGamePage", label: "replaceGamePage", description: "replaceGamePageDesc" },
+  { id: "themeSteamMenus", label: "themeSteam", description: "themeSteamDesc" },
 ];
 
 interface UpdateState {
@@ -427,9 +416,9 @@ function useUpdateStatus(enabled: boolean): UpdateState {
 
 const VOLUME_STEP = 10;
 const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const VOLUMES: { id: "sfxVolume" | "musicVolume"; label: string }[] = [
-  { id: "sfxVolume", label: "Volume des bruitages" },
-  { id: "musicVolume", label: "Volume de la musique" },
+const VOLUMES: { id: "sfxVolume" | "musicVolume"; label: StringKey }[] = [
+  { id: "sfxVolume", label: "sfxVolume" },
+  { id: "musicVolume", label: "musicVolume" },
 ];
 
 type Media = ReturnType<typeof useMedia>;
@@ -441,19 +430,19 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
   const tracks = media?.music ?? [];
   const sfxFound = !!media && Object.keys(media.sfx).length > 0;
   const musicDir = media?.musicDir ?? "~/Music/NieRDeck";
-  const noMusic = `Aucune musique trouvée. Copie tes morceaux (mp3, ogg…) dans ${musicDir}, puis appuie sur A ici pour relire le dossier.`;
+  const noMusic = t("noMusic", { dir: musicDir });
   const trackLabel = (t: { number: number | null; title: string }) => `${t.number != null ? `${String(t.number).padStart(2, "0")}. ` : ""}${t.title}`;
 
   const volumeDetail = (id: "sfxVolume" | "musicVolume"): ReactNode => {
     const missing =
       id === "sfxVolume"
-        ? !sfxFound && "Aucun bruitage trouvé. Copie le dossier « YoRHa Decky » (pack Audio Loader) dans ~/homebrew/sounds/ sur le Deck."
+        ? !sfxFound && t("noSfx")
         : !tracks.length && noMusic;
     return (
       <div>
-        <NierMeter label={id === "sfxVolume" ? "Bruitages" : "Musique"} value={settings[id]} />
+        <NierMeter label={id === "sfxVolume" ? t("sfxShort") : t("musicShort")} value={settings[id]} mutedLabel={t("muted")} />
         <p className="nier-game-description" style={{ marginTop: 18 }}>
-          {missing || "← → : régler le volume, par pas de 10 %."}
+          {missing || t("volumeHelp")}
         </p>
       </div>
     );
@@ -461,27 +450,27 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
 
   // Panneau « Musique en cours » : deux interrupteurs puis la liste des morceaux.
   const musicRows: NierOption[] = [
-    { id: "music", label: "Musique de fond", badge: settings.musicEnabled ? "Activée" : "Désactivée" },
-    { id: "shuffle", label: "Lecture aléatoire", badge: settings.musicShuffle ? "Oui" : "Non" },
+    { id: "music", label: t("backgroundMusic"), badge: settings.musicEnabled ? t("on") : t("off") },
+    { id: "shuffle", label: t("shuffle"), badge: settings.musicShuffle ? t("yes") : t("no") },
     ...tracks.map((t) => ({ id: `t:${t.id}`, label: trackLabel(t), active: now.track?.id === t.id })),
   ];
   const musicDetail = (row?: string): ReactNode => {
-    const t = now.track;
+    const playing = now.track;
     const pct = now.duration ? Math.round((now.position / now.duration) * 100) : 0;
     if (!tracks.length) return <NierGameDetail art={false} description={noMusic} />;
     return (
       <div>
         <div className="nier-ach-progress">
           <div className="nier-ach-progress-label">
-            <span>{t && settings.musicEnabled ? trackLabel(t) : "Musique désactivée"}</span>
-            <span>{t ? `${formatTime(now.position)} / ${formatTime(now.duration)}${now.playing ? "" : " · pause"}` : ""}</span>
+            <span>{playing && settings.musicEnabled ? trackLabel(playing) : t("musicDisabled")}</span>
+            <span>{playing ? `${formatTime(now.position)} / ${formatTime(now.duration)}${now.playing ? "" : ` · ${t("paused")}`}` : ""}</span>
           </div>
           <div className="nier-ach-progress-bar">
             <div className="nier-ach-progress-fill" style={{ width: `${pct}%` }} />
           </div>
         </div>
         <div className="nier-options-title">
-          {row === undefined ? `A : choisir un morceau parmi les ${tracks.length}, ou régler la lecture.` : "Morceaux"}
+          {row === undefined ? t("tracksHelp", { n: tracks.length }) : t("tracks")}
         </div>
         <NierOptionList options={musicRows} selectedId={row} />
       </div>
@@ -489,59 +478,73 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
   };
 
   return {
-    menuTitle: "Paramètres",
+    menuTitle: t("settings"),
     items: [
-      ...TOGGLES.map((t) => ({ id: t.id, label: t.label, badge: settings[t.id] ? "Oui" : "Non" })),
+      ...TOGGLES.map((x) => ({ id: x.id, label: t(x.label), badge: settings[x.id] ? t("yes") : t("no") })),
       {
         id: "track",
-        label: "Musique en cours",
-        badge: !tracks.length ? "—" : !settings.musicEnabled ? "Non" : now.track?.number != null ? String(now.track.number) : undefined,
+        label: t("nowPlaying"),
+        badge: !tracks.length ? "—" : !settings.musicEnabled ? t("no") : now.track?.number != null ? String(now.track.number) : undefined,
       },
-      ...VOLUMES.map((v) => ({ id: v.id, label: v.label, badge: settings[v.id] ? `${settings[v.id]} %` : "Coupé" })),
-      { id: "updates", label: "Mises à jour", badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
-      { id: "steam", label: "Paramètres Steam" },
+      ...VOLUMES.map((v) => ({ id: v.id, label: t(v.label), badge: settings[v.id] ? `${settings[v.id]} %` : t("muted") })),
+      { id: "language", label: t("language"), badge: LANGS.find((l) => l.id === settings.language)?.label },
+      { id: "updates", label: t("updates"), badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
+      { id: "steam", label: t("steamSettings") },
     ],
     detail: (id, row) => {
       const toggle = id ? isToggle(id) : undefined;
       if (toggle) {
         return {
-          title: toggle.label,
+          title: t(toggle.label),
           content: (
             <NierGameDetail
               art={false}
-              fields={[{ label: "État", value: settings[toggle.id] ? "Activé" : "Désactivé" }]}
-              description={toggle.description}
+              fields={[{ label: t("state"), value: settings[toggle.id] ? t("on") : t("off") }]}
+              description={t(toggle.description)}
             />
           ),
         };
       }
       const volume = id ? isVolume(id) : undefined;
-      if (volume) return { title: volume.label, content: volumeDetail(volume.id) };
-      if (id === "track") return { title: "Musique en cours", content: musicDetail(row) };
+      if (volume) return { title: t(volume.label), content: volumeDetail(volume.id) };
+      if (id === "track") return { title: t("nowPlaying"), content: musicDetail(row) };
+      if (id === "language") {
+        return {
+          title: t("language"),
+          content: (
+            <div>
+              <p className="nier-game-description" style={{ marginBottom: 14 }}>
+                {t("languageDesc")}
+              </p>
+              <NierOptionList options={LANGS.map((l) => ({ id: l.id, label: l.label, active: l.id === settings.language }))} selectedId={row} />
+            </div>
+          ),
+        };
+      }
       if (id === "updates") {
         return {
-          title: "Mises à jour",
+          title: t("updates"),
           content: (
             <NierGameDetail
               art={false}
               fields={[
-                { label: "Installée", value: status?.current ?? "…" },
-                { label: "Dernière", value: updates.checking ? "Vérification…" : (status?.latest ?? "—") },
+                { label: t("installedVersion"), value: status?.current ?? "…" },
+                { label: t("latestVersion"), value: updates.checking ? t("checking") : (status?.latest ?? "—") },
               ]}
               description={
                 status?.error
-                  ? `Impossible de joindre GitHub (${status.error}).`
+                  ? t("githubError", { error: status.error })
                   : status?.available
-                    ? "A : installer la nouvelle version (Decky demande une confirmation)."
-                    : "NieRDeck est à jour. A : vérifier à nouveau."
+                    ? t("updateAvailable")
+                    : t("upToDate")
               }
             />
           ),
         };
       }
       return {
-        title: "Paramètres Steam",
-        content: <NierGameDetail art={false} description="Ouvre les paramètres du Steam Deck : réseau, affichage, son, contrôleur…" />,
+        title: t("steamSettings"),
+        content: <NierGameDetail art={false} description={t("steamSettingsDesc")} />,
       };
     },
     activate: (id) => {
@@ -563,7 +566,16 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
       }
     },
     panel: (id) =>
-      id === "track" && tracks.length
+      id === "language"
+        ? {
+            rows: LANGS.map((l) => l.id),
+            initial: settings.language,
+            activate: (row) => {
+              playSfx("confirm");
+              updateSettings({ language: row as NierSettings["language"] });
+            },
+          }
+        : id === "track" && tracks.length
         ? {
             rows: musicRows.map((r) => r.id),
             initial: now.track ? `t:${now.track.id}` : undefined,
@@ -593,17 +605,19 @@ function systemView(settings: NierSettings, updates: UpdateState, media: Media, 
     adjustable: (id) => !!isVolume(id),
     hint: (id) =>
       isToggle(id)
-        ? "Changer"
+        ? t("change")
         : isVolume(id)
           ? undefined
           : id === "track"
             ? tracks.length
-              ? "Choisir"
-              : "Relire"
-            : id === "updates"
-              ? status?.available
-                ? "Installer"
-                : "Vérifier"
-              : "Ouvrir",
+              ? t("choose")
+              : t("reload")
+            : id === "language"
+              ? t("choose")
+              : id === "updates"
+                ? status?.available
+                  ? t("install")
+                  : t("check")
+                : t("open"),
   };
 }

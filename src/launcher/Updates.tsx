@@ -3,7 +3,8 @@
 // Approche reprise de benderthemes (Updates.tsx).
 import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { callable, fetchNoCors, toaster } from "@decky/api";
-import { suspendEffects } from "./settings";
+import { t } from "./i18n";
+import { suspendEffects, useSettings } from "./settings";
 import { useEffect, useState } from "react";
 
 export interface UpdateStatus {
@@ -36,7 +37,7 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
   const current = await getVersion();
   try {
     const response = await fetchNoCors(RELEASES_URL, { headers: { Accept: "application/vnd.github+json" } });
-    if (!response.ok) throw new Error(`GitHub a répondu ${response.status}`);
+    if (!response.ok) throw new Error(t("githubStatus", { status: response.status }));
     const release = await response.json();
     const latest = String(release?.tag_name ?? "").replace(/^v/, "");
     const asset = (release?.assets ?? []).find((a: any) => a?.name === "NieRDeck.zip");
@@ -52,7 +53,7 @@ const deckyBackend = (): any => (window as any).DeckyBackend ?? (window.opener a
 
 export async function installUpdate(status: UpdateStatus) {
   const backend = deckyBackend();
-  if (!backend?.call || !status.url || !status.latest) throw new Error("Installateur de Decky indisponible.");
+  if (!backend?.call || !status.url || !status.latest) throw new Error(t("deckyInstallerMissing"));
   // Comme décocher les options à la main : l'accueil et la page de jeu
   // redeviennent ceux de Steam le temps de l'installation (sinon elle reste bloquée).
   // La nouvelle version repart avec les réglages enregistrés ; si l'installation est
@@ -74,7 +75,7 @@ export async function notifyIfUpdateAvailable() {
   try {
     const status = await getUpdateStatus();
     if (status.available) {
-      toaster.toast({ title: "NieRDeck", body: `Mise à jour ${status.latest} disponible : ··· → NieRDeck → Mettre à jour.` });
+      toaster.toast({ title: "NieRDeck", body: t("updateToast", { version: status.latest ?? "" }) });
     }
   } catch (e) {
     console.error("[NieRDeck] vérification des mises à jour", e);
@@ -82,6 +83,7 @@ export async function notifyIfUpdateAvailable() {
 }
 
 export function UpdatesSection() {
+  useSettings(); // suit le changement de langue
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState("");
@@ -92,7 +94,7 @@ export function UpdatesSection() {
     try {
       setStatus(await getUpdateStatus());
     } catch (e) {
-      setMessage(`Vérification impossible : ${e}`);
+      setMessage(t("updateCheckFailed", { error: String(e) }));
     } finally {
       setChecking(false);
     }
@@ -106,35 +108,35 @@ export function UpdatesSection() {
     if (!status) return;
     try {
       await installUpdate(status);
-      setMessage("Confirme l'installation dans la fenêtre de Decky.");
+      setMessage(t("updateConfirmInDecky"));
     } catch (e) {
-      setMessage(`Installation impossible : ${e}`);
+      setMessage(t("updateInstallFailed", { error: String(e) }));
     }
   };
 
   const summary = !status
-    ? "Vérification…"
+    ? t("checking")
     : status.error
-      ? `Version installée : ${status.current}. Impossible de joindre GitHub (${status.error}).`
+      ? t("updateStatusError", { current: status.current, error: status.error })
       : status.available
-        ? `Version installée : ${status.current}. Nouvelle version : ${status.latest}.`
-        : `Version installée : ${status.current}. C'est la dernière.`;
+        ? t("updateStatusAvailable", { current: status.current, latest: status.latest ?? "" })
+        : t("updateStatusLatest", { current: status.current });
 
   return (
-    <PanelSection title="Mises à jour">
+    <PanelSection title={t("updates")}>
       <PanelSectionRow>
         <div style={{ fontSize: 12, lineHeight: 1.5 }}>{summary}</div>
       </PanelSectionRow>
       {status?.available && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => void update()}>
-            Mettre à jour vers {status.latest}
+            {t("updateTo", { version: status.latest ?? "" })}
           </ButtonItem>
         </PanelSectionRow>
       )}
       <PanelSectionRow>
         <ButtonItem layout="below" disabled={checking} onClick={() => void check()}>
-          {checking ? "Vérification…" : "Rechercher une mise à jour"}
+          {checking ? t("checking") : t("checkForUpdate")}
         </ButtonItem>
       </PanelSectionRow>
       {message && (

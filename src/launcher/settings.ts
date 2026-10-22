@@ -1,6 +1,17 @@
 import { callable } from "@decky/api";
 import { useEffect, useState } from "react";
 
+export type Lang = "fr" | "en";
+
+/** Langue du Deck au premier lancement : français si le système l'est, sinon anglais. */
+function defaultLang(): Lang {
+  try {
+    return String(navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en";
+  } catch {
+    return "en";
+  }
+}
+
 export interface NierSettings {
   /** Afficher NieRDeck à la place de l'accueil Steam (donc dès le démarrage du mode Gaming). */
   replaceHome: boolean;
@@ -18,9 +29,11 @@ export interface NierSettings {
   musicShuffle: boolean;
   /** Dernier morceau joué (reprise quand la lecture aléatoire est coupée). */
   musicTrack: string;
+  /** Langue de l'interface. */
+  language: Lang;
 }
 
-const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true, sfxVolume: 60, musicVolume: 40, musicEnabled: true, musicShuffle: true, musicTrack: "" };
+const DEFAULTS: NierSettings = { replaceHome: true, themeSteamMenus: true, replaceGamePage: true, sfxVolume: 60, musicVolume: 40, musicEnabled: true, musicShuffle: true, musicTrack: "", language: defaultLang() };
 
 const backendGet = callable<[], Partial<NierSettings> | null>("get_settings");
 const backendSet = callable<[settings: NierSettings], boolean>("set_settings");

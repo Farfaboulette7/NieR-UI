@@ -8,6 +8,7 @@ import { playSfx } from "./audio";
 import { useAchievements, useFriendsWhoPlayed, useStoreInfo } from "./gameDetails";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
+import { locale, t } from "./i18n";
 import { launcherState } from "./launcherState";
 import { MusicFooter, requestMusicView } from "./MusicFooter";
 import { getSettings, useSettings } from "./settings";
@@ -76,7 +77,7 @@ function useGame(appid: number): SteamGame | null {
 type ItemId = "play" | "info" | "achievements" | "friends" | "steam";
 
 const formatDate = (seconds: number) =>
-  seconds > 0 ? new Date(seconds * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "";
+  seconds > 0 ? new Date(seconds * 1000).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" }) : "";
 
 /** Ouvre la page Steam d'origine d'un jeu, en court-circuitant la page NieR. */
 export function openOriginalPage(appid: number) {
@@ -126,17 +127,17 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
   }
 
   const items: { id: ItemId; label: string; badge?: string; hint?: string }[] = [
-    { id: "play", label: game.installed ? "Jouer" : "Installer", hint: game.installed ? "Lancer" : "Installer" },
-    { id: "info", label: "Informations", hint: "Parcourir" },
+    { id: "play", label: game.installed ? t("play") : t("install"), hint: game.installed ? t("launch") : t("install") },
+    { id: "info", label: t("information"), hint: t("browse") },
     // Un jeu non-Steam n'a en général pas de succès : pas d'entrée vide.
     ...(game.shortcut && !achievements.total
       ? []
-      : [{ id: "achievements" as const, label: "Succès", hint: "Parcourir", badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
+      : [{ id: "achievements" as const, label: t("achievements"), hint: t("browse"), badge: achievements.total ? `${achievements.unlocked}/${achievements.total}` : undefined }]),
     // Ce que montre l'onglet Activité de Steam : les contacts qui ont le jeu.
     ...(game.shortcut
       ? []
-      : [{ id: "friends" as const, label: "Contacts", hint: "Parcourir", badge: friends.friends.length ? String(friends.friends.length) : undefined }]),
-    { id: "steam", label: "Page Steam d'origine", hint: "Ouvrir" },
+      : [{ id: "friends" as const, label: t("contacts"), hint: t("browse"), badge: friends.friends.length ? String(friends.friends.length) : undefined }]),
+    { id: "steam", label: t("steamPage"), hint: t("open") },
   ];
   const current = items.find((i) => i.id === itemId) ?? items[0];
 
@@ -206,23 +207,23 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
   if (current.id === "info") {
     const info = store.info;
     detail = game.shortcut ? (
-      <NierGameDetail image={heroes} description="Jeu non-Steam : pas de fiche du Magasin." />
+      <NierGameDetail image={heroes} description={t("nonSteamNoStore")} />
     ) : store.loading ? (
-      <NierGameDetail image={heroes} description="Chargement de la fiche du Magasin…" />
+      <NierGameDetail image={heroes} description={t("storeLoading")} />
     ) : info ? (
       <NierGameDetail
         image={info.images.concat(heroes)}
         imageAlt={game.name}
         fields={[
-          { label: "Genres", value: info.genres.join(", ") || "—" },
-          { label: "Développeur", value: info.developers.join(", ") || "—" },
-          { label: "Éditeur", value: info.publishers.join(", ") || "—" },
-          { label: "Sortie", value: info.releaseDate || "—" },
+          { label: t("genres"), value: info.genres.join(", ") || "—" },
+          { label: t("developer"), value: info.developers.join(", ") || "—" },
+          { label: t("publisher"), value: info.publishers.join(", ") || "—" },
+          { label: t("release"), value: info.releaseDate || "—" },
         ]}
         description={info.description}
       />
     ) : (
-      <NierGameDetail image={heroes} description="Fiche du Magasin indisponible (hors ligne ou jeu retiré)." />
+      <NierGameDetail image={heroes} description={t("storeUnavailable")} />
     );
   } else if (current.id === "achievements") {
     detail = (
@@ -235,9 +236,10 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
           description: a.description,
           achieved: a.achieved,
           icon: a.icon,
-          note: a.achieved ? formatDate(a.unlockedAt) : "Verrouillé",
+          note: a.achieved ? formatDate(a.unlockedAt) : t("locked"),
         }))}
-        emptyText={achievements.loading ? "Chargement des succès…" : "Ce jeu n'a pas de succès."}
+        emptyText={achievements.loading ? t("achievementsLoading") : t("noAchievements")}
+        progressLabel={t("progress")}
       />
     );
   } else if (current.id === "friends") {
@@ -246,7 +248,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
       <NierPeopleList
         heading={
           friends.friends.length
-            ? `${friends.friends.length} contact${friends.friends.length > 1 ? "s ont" : " a"} ce jeu${playing ? ` · ${playing} en train d'y jouer` : ""}`
+            ? t(friends.friends.length > 1 ? "friendsOwnPlural" : "friendsOwn", { n: friends.friends.length }) + (playing ? t("friendsPlaying", { n: playing }) : "")
             : undefined
         }
         items={friends.friends.map((f) => ({
@@ -254,16 +256,16 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
           name: f.name,
           avatar: f.avatar,
           active: f.online,
-          status: f.playingThis ? "Joue à ce jeu en ce moment" : f.game ? `Joue à ${f.game}` : f.online ? "En ligne" : "Hors ligne",
+          status: f.playingThis ? t("playingThis") : f.game ? t("playingOther", { game: f.game }) : f.online ? t("online") : t("offline"),
         }))}
-        emptyText={friends.loading ? "Recherche des contacts…" : "Aucun de tes contacts n'a ce jeu."}
+        emptyText={friends.loading ? t("friendsLoading") : t("noFriends")}
       />
     );
   } else if (current.id === "steam") {
     detail = (
       <NierGameDetail
         image={heroes}
-        description="Ouvre la page Steam habituelle de ce jeu : activité, contenu perso, communauté, propriétés. Elle reste habillée au style NieR."
+        description={t("steamPageDesc")}
       />
     );
   } else {
@@ -272,10 +274,10 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
         image={heroes}
         imageAlt={game.name}
         fields={[
-          { label: "Temps de jeu", value: formatPlaytime(game.playtime) },
-          { label: "Dernière session", value: formatLastPlayed(game.lastPlayed) },
-          { label: "Taille", value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
-          { label: "Statut", value: game.installed ? "Installé" : "Non installé" },
+          { label: t("playtime"), value: formatPlaytime(game.playtime) },
+          { label: t("lastSession"), value: formatLastPlayed(game.lastPlayed) },
+          { label: t("size"), value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
+          { label: t("status"), value: game.installed ? t("installed") : t("notInstalled") },
         ]}
       />
     );
@@ -287,7 +289,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
     <NierLayout
       title={game.name}
       status={<NierStatus time={time} battery={battery} />}
-      menuTitle="Menu du jeu"
+      menuTitle={t("gameMenu")}
       menuItems={items.map(({ id, label, badge }) => ({ id, label, badge }))}
       activeItemId={current.id}
       onItemSelect={(id) => id !== current.id && setItemId(id as ItemId)}
@@ -297,21 +299,21 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
       detailRef={detailRef}
       footerStart={
         <>
-          <NierHint button="STEAM" label="Menu" />
-          <NierHint button="QAM" label="Accès rapide" />
+          <NierHint button="STEAM" label={t("menu")} />
+          <NierHint button="QAM" label={t("quickAccess")} />
           {footerExtra}
         </>
       }
       footer={
         panelFocus ? (
           <>
-            <NierHint button="UPDOWN" label="Défiler" />
-            <NierHint button="B" label="Menu du jeu" />
+            <NierHint button="UPDOWN" label={t("scroll")} />
+            <NierHint button="B" label={t("gameMenu")} />
           </>
         ) : (
           <>
             {confirmHint && <NierHint button={confirmHint.button} label={confirmHint.label} />}
-            <NierHint button="B" label="Retour" />
+            <NierHint button="B" label={t("back")} />
           </>
         )
       }

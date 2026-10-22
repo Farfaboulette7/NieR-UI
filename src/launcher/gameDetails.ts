@@ -3,6 +3,7 @@
 // donne un panneau vide, jamais une erreur.
 import { fetchNoCors } from "@decky/api";
 import { useEffect, useState } from "react";
+import { steamLanguage, t } from "./i18n";
 import type { SteamGame } from "./steamLibrary";
 
 declare const SteamClient: any;
@@ -53,7 +54,7 @@ async function fetchAchievements(game: SteamGame): Promise<Achievement[]> {
   return raw.map(
     (a: any, i: number): Achievement => ({
       id: String(a.strID ?? a.id ?? i),
-      name: String(a.strName ?? a.name ?? "Succès"),
+      name: String(a.strName ?? a.name ?? t("achievements")),
       description: String(a.strDescription ?? a.description ?? ""),
       achieved: !!(a.bAchieved ?? a.achieved),
       unlockedAt: Number(a.rtUnlocked ?? a.unlock_time ?? 0),
@@ -103,7 +104,8 @@ export interface StoreInfo {
   images: string[];
 }
 
-const storeCache = new Map<number, StoreInfo | null>();
+/** Par jeu et par langue (« 570:french »). */
+const storeCache = new Map<string, StoreInfo | null>();
 
 /** Retire le HTML et décode les entités (&amp;, &quot;...). */
 const plainText = (html: string) => {
@@ -114,9 +116,10 @@ const plainText = (html: string) => {
   }
 };
 
-async function fetchStoreInfo(appid: number): Promise<StoreInfo | null> {
-  if (storeCache.has(appid)) return storeCache.get(appid)!;
-  const response = await fetchNoCors(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=french`);
+async function fetchStoreInfo(appid: number, language: string): Promise<StoreInfo | null> {
+  const key = `${appid}:${language}`;
+  if (storeCache.has(key)) return storeCache.get(key)!;
+  const response = await fetchNoCors(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=${language}`);
   const json = await response.json();
   const data = json?.[appid]?.success ? json[appid].data : null;
   const info: StoreInfo | null = data
@@ -132,25 +135,27 @@ async function fetchStoreInfo(appid: number): Promise<StoreInfo | null> {
         ].filter(Boolean),
       }
     : null;
-  storeCache.set(appid, info);
+  storeCache.set(key, info);
   return info;
 }
 
 /** Fiche du Magasin, chargée seulement quand `enabled` (panneau affiché). null = indisponible. */
 export function useStoreInfo(game: SteamGame | null, enabled: boolean): { loading: boolean; info: StoreInfo | null } {
-  const [state, setState] = useState<{ appid: number; info: StoreInfo | null } | null>(null);
+  const language = steamLanguage();
+  const key = game ? `${game.appid}:${language}` : "";
+  const [state, setState] = useState<{ key: string; info: StoreInfo | null } | null>(null);
   useEffect(() => {
-    if (!enabled || !game || game.shortcut || state?.appid === game.appid) return;
+    if (!enabled || !game || game.shortcut || state?.key === key) return;
     let alive = true;
-    fetchStoreInfo(game.appid)
-      .then((info) => alive && setState({ appid: game.appid, info }))
-      .catch(() => alive && setState({ appid: game.appid, info: null }));
+    fetchStoreInfo(game.appid, language)
+      .then((info) => alive && setState({ key, info }))
+      .catch(() => alive && setState({ key, info: null }));
     return () => {
       alive = false;
     };
-  }, [enabled, game?.appid]);
+  }, [enabled, key]);
   if (!game || game.shortcut) return { loading: false, info: null };
-  return { loading: state?.appid !== game.appid, info: state?.appid === game.appid ? state.info : null };
+  return { loading: state?.key !== key, info: state?.key === key ? state.info : null };
 }
 
 // ───────────── Contacts qui ont joué ─────────────

@@ -1,10 +1,11 @@
-import { PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
+import { DropdownItem, PanelSection, PanelSectionRow, staticClasses, ToggleField } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
 import { stopMusic } from "./launcher/audio";
 import { GamePageSwitch } from "./launcher/GamePage";
 import { HomeSwitch } from "./launcher/HomeSwitch";
 import { getSettings, loadSettings, onSettingsChange, updateSettings, useSettings } from "./launcher/settings";
+import { LANGS, t } from "./launcher/i18n";
 import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 
@@ -39,8 +40,8 @@ function QuickAccessPanel() {
       <div ref={anchor} style={{ display: "none" }} />
       <PanelSectionRow>
         <ToggleField
-          label="Lancer au démarrage"
-          description="Remplace l'accueil Steam par NieRDeck, dès le démarrage du mode Gaming."
+          label={t("replaceHome")}
+          description={t("replaceHomeDesc")}
           checked={settings.replaceHome}
           disabled={!loaded}
           onChange={(on) => updateSettings({ replaceHome: on })}
@@ -48,8 +49,8 @@ function QuickAccessPanel() {
       </PanelSectionRow>
       <PanelSectionRow>
         <ToggleField
-          label="Page de jeu NieR"
-          description="Remplace la page d'un jeu Steam par la page NieR (Jouer, Informations, Succès)."
+          label={t("replaceGamePage")}
+          description={t("replaceGamePageDesc")}
           checked={settings.replaceGamePage}
           disabled={!loaded}
           onChange={(on) => updateSettings({ replaceGamePage: on })}
@@ -57,15 +58,24 @@ function QuickAccessPanel() {
       </PanelSectionRow>
       <PanelSectionRow>
         <ToggleField
-          label="Thème NieR de Steam"
+          label={t("themeSteam")}
           description={
             settings.themeSteamMenus
-              ? `Fenêtres habillées : ${windows || "aucune pour l'instant"}`
-              : "Habille le menu STEAM, l'accès rapide, les boîtes de dialogue et les pages de jeu aux couleurs YoRHA."
+              ? t("themedWindows", { list: windows || t("themedNone") })
+              : t("themeSteamDesc")
           }
           checked={settings.themeSteamMenus}
           disabled={!loaded}
           onChange={(on) => updateSettings({ themeSteamMenus: on })}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <DropdownItem
+          label={t("language")}
+          rgOptions={LANGS.map((l) => ({ data: l.id, label: l.label }))}
+          selectedOption={settings.language}
+          disabled={!loaded}
+          onChange={(o) => updateSettings({ language: o.data })}
         />
       </PanelSectionRow>
     </PanelSection>

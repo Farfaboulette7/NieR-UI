@@ -5,7 +5,7 @@
   "api_version": 1,
   "publish": {
     "tags": ["launcher", "theme", "ui"],
-    "description": "Launcher de jeux au style des menus YoRHA de NieR:Automata.",
+    "description": "A game launcher styled after the YoRHA menus of NieR:Automata.",
     "image": ""
   }
 }

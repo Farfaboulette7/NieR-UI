@@ -5,6 +5,7 @@
 import { Navigation } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
+import { locale, t } from "./i18n";
 
 declare const collectionStore: any;
 declare const appStore: any;
@@ -178,11 +179,11 @@ const EMPTY: SteamLibrary = { installed: [], recent: [], collections: [] };
 export function readLibrary(): SteamLibrary {
   try {
     const all = collectionStore?.GetCollection?.("type-games") ?? collectionStore?.allGamesCollection;
-    if (!all) return { ...EMPTY, error: "Bibliothèque Steam indisponible." };
+    if (!all) return { ...EMPTY, error: t("libraryUnavailable") };
 
     const hidden = new Set<number>(appsOf(collectionStore?.GetCollection?.("hidden")).map((a: any) => Number(a?.appid)));
     const toGames = (apps: any[]) => apps.filter((a) => !isHidden(a, hidden)).map(toGame).filter(Boolean) as SteamGame[];
-    const byName = (x: SteamGame, y: SteamGame) => x.sortName.localeCompare(y.sortName, "fr", { sensitivity: "base" });
+    const byName = (x: SteamGame, y: SteamGame) => x.sortName.localeCompare(y.sortName, locale(), { sensitivity: "base" });
 
     const games = toGames(appsOf(all));
 
@@ -196,7 +197,7 @@ export function readLibrary(): SteamLibrary {
     };
     addCollection(collectionStore?.GetCollection?.("favorite"));
     const user: any[] = [...(collectionStore?.userCollections ?? [])].sort((x: any, y: any) =>
-      String(x?.displayName ?? "").localeCompare(String(y?.displayName ?? ""), "fr", { numeric: true, sensitivity: "base" }),
+      String(x?.displayName ?? "").localeCompare(String(y?.displayName ?? ""), locale(), { numeric: true, sensitivity: "base" }),
     );
     user.forEach(addCollection);
     return {
@@ -237,36 +238,37 @@ export function openGamePage(game: SteamGame) {
 export function launchGame(game: SteamGame) {
   try {
     SteamClient.Apps.RunGame(game.gameid, "", -1, 100);
-    toaster.toast({ title: "NieRDeck", body: `Lancement : ${game.name}` });
+    toaster.toast({ title: "NieRDeck", body: t("launching", { name: game.name }) });
   } catch (e) {
     console.error("[NieRDeck] lancement", e);
-    toaster.toast({ title: "NieRDeck", body: `Impossible de lancer ${game.name}.` });
+    toaster.toast({ title: "NieRDeck", body: t("launchFailed", { name: game.name }) });
   }
 }
 
 // ───────────── Mise en forme ─────────────
 
 export function formatPlaytime(minutes: number, short = false): string {
-  if (minutes <= 0) return short ? "—" : "Jamais joué";
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes <= 0) return short ? "—" : t("neverPlayed");
+  if (minutes < 60) return t("minutes", { n: minutes });
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return short || m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`;
+  return short || m === 0 ? t("hours", { h }) : t("hoursMinutes", { h, m: String(m).padStart(2, "0") });
 }
 
 export function formatLastPlayed(seconds: number): string {
-  if (seconds <= 0) return "Jamais";
+  if (seconds <= 0) return t("never");
   const date = new Date(seconds * 1000);
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
-  if (days <= 0) return "Aujourd'hui";
-  if (days === 1) return "Hier";
-  if (days < 7) return `Il y a ${days} jours`;
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  if (days <= 0) return t("today");
+  if (days === 1) return t("yesterday");
+  if (days < 7) return t("daysAgo", { n: days });
+  return date.toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
 }
 
 export function formatSize(bytes: number): string {
   if (bytes <= 0) return "—";
   const gb = bytes / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(1).replace(".", ",")} Go` : `${Math.round(bytes / 1024 ** 2)} Mo`;
+  const decimal = (n: number) => (locale() === "fr-FR" ? n.toFixed(1).replace(".", ",") : n.toFixed(1));
+  return gb >= 1 ? t("gigabytes", { n: decimal(gb) }) : t("megabytes", { n: Math.round(bytes / 1024 ** 2) });
 }

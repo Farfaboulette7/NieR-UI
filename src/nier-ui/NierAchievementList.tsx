@@ -14,17 +14,19 @@ export interface NierAchievementListProps {
   items: NierAchievementItem[];
   /** Message affiché quand il n'y a rien à lister. */
   emptyText?: string;
+  /** Libellé de la barre de progression. */
+  progressLabel?: string;
 }
 
 /** Progression + liste de succès. Les styles viennent de <NierStyles />. */
-export function NierAchievementList({ unlocked, total, items, emptyText }: NierAchievementListProps) {
+export function NierAchievementList({ unlocked, total, items, emptyText, progressLabel = "Progression" }: NierAchievementListProps) {
   const percent = total ? Math.round((unlocked / total) * 100) : 0;
   return (
     <div className="nier-ach">
       {total > 0 && (
         <div className="nier-ach-progress">
           <div className="nier-ach-progress-label">
-            <span>Progression</span>
+            <span>{progressLabel}</span>
             <span>
               {unlocked} / {total} · {percent} %
             </span>

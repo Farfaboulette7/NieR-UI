@@ -4,6 +4,7 @@
 // Requêtes faites par Decky (fetchNoCors), comme la fiche du Magasin.
 import { fetchNoCors } from "@decky/api";
 import { useEffect, useState } from "react";
+import { lang, locale, steamLanguage, t } from "./i18n";
 
 declare const App: any;
 
@@ -39,7 +40,7 @@ const steamId = (): string | null => {
 
 async function getJson(url: string): Promise<any> {
   const response = await fetchNoCors(url);
-  if (!response.ok) throw new Error(`Steam a répondu ${response.status}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
 
@@ -53,12 +54,12 @@ function toItem(appid: number, s: any): WishlistItem {
     appid,
     name: String(s?.name ?? `App ${appid}`),
     images: [fromAssets(assets?.header), `${CDN}/${appid}/header.jpg`].filter(Boolean),
-    price: s?.is_free ? "Gratuit" : String(option?.formatted_final_price ?? ""),
+    price: s?.is_free ? t("free") : String(option?.formatted_final_price ?? ""),
     discount: Number(option?.discount_pct) || 0,
     releaseDate: released
-      ? new Date(released * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
+      ? new Date(released * 1000).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" })
       : s?.release?.is_coming_soon
-        ? "À venir"
+        ? t("comingSoon")
         : "",
   };
 }
@@ -69,7 +70,7 @@ async function storeItems(appids: number[]): Promise<Map<number, any>> {
   for (let i = 0; i < appids.length; i += 50) {
     const input = {
       ids: appids.slice(i, i + 50).map((appid) => ({ appid })),
-      context: { language: "french", country_code: "FR", steam_realm: 1 },
+      context: { language: steamLanguage(), country_code: "FR", steam_realm: 1 },
       data_request: { include_basic_info: true, include_assets: true, include_release: true },
     };
     const json = await getJson(`${API}/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`);
@@ -80,7 +81,7 @@ async function storeItems(appids: number[]): Promise<Map<number, any>> {
 
 async function fetchWishlist(): Promise<WishlistItem[]> {
   const id = steamId();
-  if (!id) throw new Error("Compte Steam introuvable.");
+  if (!id) throw new Error(t("steamAccountMissing"));
   const json = await getJson(`${API}/IWishlistService/GetWishlist/v1/?steamid=${id}`);
   const entries: any[] = json?.response?.items ?? [];
   // Ordre de la liste de souhaits : rang choisi par l'utilisateur, puis date d'ajout.
@@ -95,24 +96,28 @@ async function fetchWishlist(): Promise<WishlistItem[]> {
   return appids.map((appid) => toItem(appid, details.get(appid)));
 }
 
-let cache: { at: number; items: WishlistItem[] } | null = null;
+// Par langue : noms, prix et dates viennent du Magasin dans la langue choisie.
+let cache: { at: number; lang: string; items: WishlistItem[] } | null = null;
 const CACHE_MS = 10 * 60_000;
 
 /** Liste de souhaits, chargée quand `enabled` (onglet affiché) puis gardée 10 min. */
 export function useWishlist(enabled: boolean): Wishlist {
-  const [state, setState] = useState<Wishlist>(() => (cache ? { loading: false, items: cache.items } : { loading: true, items: [] }));
+  const language = lang();
+  const fresh = () => !!cache && cache.lang === language && Date.now() - cache.at < CACHE_MS;
+  const [state, setState] = useState<Wishlist>(() => (cache && fresh() ? { loading: false, items: cache.items } : { loading: true, items: [] }));
   useEffect(() => {
-    if (!enabled || (cache && Date.now() - cache.at < CACHE_MS)) return;
+    if (!enabled || fresh()) return;
     let alive = true;
+    setState((s) => ({ ...s, loading: true }));
     fetchWishlist()
       .then((items) => {
-        cache = { at: Date.now(), items };
+        cache = { at: Date.now(), lang: language, items };
         if (alive) setState({ loading: false, items });
       })
       .catch((e) => alive && setState({ loading: false, items: [], error: String(e?.message ?? e) }));
     return () => {
       alive = false;
     };
-  }, [enabled]);
+  }, [enabled, language]);
   return state;
 }
