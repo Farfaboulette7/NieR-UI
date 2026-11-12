@@ -2,7 +2,7 @@
 // (même mécanisme que « Installer un plugin depuis une URL », sans rien taper).
 // Approche reprise de benderthemes (Updates.tsx).
 import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
-import { callable, fetchNoCors, toaster } from "@decky/api";
+import { callable, toaster } from "@decky/api";
 import { t } from "./i18n";
 import { suspendEffects, useSettings } from "./settings";
 import { useEffect, useState } from "react";
@@ -19,8 +19,9 @@ const PLUGIN_NAME = "NieRDeck";
 // Types d'installation de Decky : 1 = réinstaller, 2 = mettre à jour.
 const INSTALL_UPDATE = 2;
 
-const RELEASES_URL = "https://api.github.com/repos/Farfaboulette7/NieR-UI/releases/latest";
 const getVersion = callable<[], string>("get_version");
+// Lue par le backend sur la page des releases, sans l'API de GitHub (60 appels par heure).
+const getLatestRelease = callable<[], { tag?: string; url?: string; error?: string }>("get_latest_release");
 
 const versionParts = (v: string) => v.replace(/^v/, "").split(".").map((p) => parseInt(p, 10) || 0);
 function isNewer(latest: string, current: string): boolean {
@@ -32,17 +33,14 @@ function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-/** Dernière release GitHub, lue par le même canal que la fiche du Magasin. */
+/** Dernière release GitHub de NieRDeck. */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   const current = await getVersion();
   try {
-    const response = await fetchNoCors(RELEASES_URL, { headers: { Accept: "application/vnd.github+json" } });
-    if (!response.ok) throw new Error(t("githubStatus", { status: response.status }));
-    const release = await response.json();
-    const latest = String(release?.tag_name ?? "").replace(/^v/, "");
-    const asset = (release?.assets ?? []).find((a: any) => a?.name === "NieRDeck.zip");
-    const url: string | null = asset?.browser_download_url ?? null;
-    return { current, latest, url, available: !!url && isNewer(latest, current) };
+    const release = await getLatestRelease();
+    if (!release?.tag || !release.url) throw new Error(release?.error ?? "?");
+    const latest = release.tag.replace(/^v/, "");
+    return { current, latest, url: release.url, available: isNewer(latest, current) };
   } catch (e) {
     return { current, latest: null, url: null, available: false, error: String(e) };
   }

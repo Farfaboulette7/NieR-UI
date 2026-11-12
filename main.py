@@ -11,7 +11,7 @@ import decky
 
 # Module Catalogue (jeux du serveur RomM de FarfaLauncher), dans son propre fichier.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from catalogue import Catalogue  # noqa: E402
+from catalogue import Catalogue, latest_tag  # noqa: E402
 
 
 def _settings_path() -> str:
@@ -290,9 +290,17 @@ class Plugin:
 
     # ───── mises à jour (releases GitHub) ─────
     async def get_version(self):
-        """Version installée. La release GitHub est lue côté interface (fetchNoCors) :
-        le Python de Decky n'a pas toujours les certificats pour joindre GitHub."""
+        """Version installée."""
         return _installed_version()
+
+    async def get_latest_release(self):
+        """Dernière release de NieRDeck : tag et lien du zip. Lue avec curl sur la page des
+        releases, sans l'API de GitHub (60 appels par heure pour toute la maison)."""
+        try:
+            tag = await latest_tag("Farfaboulette7/NieR-UI")
+            return {"tag": tag, "url": f"https://github.com/Farfaboulette7/NieR-UI/releases/download/{tag}/NieRDeck.zip"}
+        except Exception as e:
+            return {"error": str(e)}
 
     # ───── réglages (fichier JSON dans le dossier settings de Decky) ─────
     async def get_settings(self):

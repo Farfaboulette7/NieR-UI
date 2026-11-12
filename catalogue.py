@@ -20,7 +20,7 @@ import tempfile
 import decky
 
 CLI_NAME = "FarfaLauncherDeck-linux-x86_64"
-RELEASES_URL = "https://api.github.com/repos/Farfaboulette7/FarfaLauncher/releases/latest"
+LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
 READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser"}
 WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion"}
@@ -199,23 +199,34 @@ class Catalogue:
         """Télécharge FarfaLauncherDeck de la dernière version de FarfaLauncher (curl :
         le Python de Decky n'a pas toujours les certificats pour joindre GitHub)."""
         try:
-            out = await _curl(["-fsSL", "-H", "Accept: application/vnd.github+json", RELEASES_URL])
-            release = json.loads(out)
-            asset = next((a for a in release.get("assets", []) if a.get("name") == CLI_NAME), None)
-            if not asset:
-                return {"error": "not_published", "message": f"Pas de {CLI_NAME} dans la version {release.get('tag_name')}."}
+            # Liens directs des releases, sans l'API de GitHub (limitée à 60 appels par heure).
+            tag = await latest_tag(LAUNCHER_REPO)
             dest = cli_path()
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest))
             os.close(fd)
-            await _curl(["-fsSL", "-o", tmp, asset["browser_download_url"]], timeout=600)
+            try:
+                await _curl(["-fsSL", "-o", tmp, f"https://github.com/{LAUNCHER_REPO}/releases/download/{tag}/{CLI_NAME}"], timeout=600)
+            except Exception:
+                os.remove(tmp)
+                return {"error": "not_published", "message": f"Pas de {CLI_NAME} dans la version {tag}."}
             os.chmod(tmp, os.stat(tmp).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             # Remplacé d'un coup : un jeu lancé garde l'ancien fichier ouvert.
             os.replace(tmp, dest)
-            return {"data": {"version": release.get("tag_name")}}
+            return {"data": {"version": tag}}
         except Exception as e:
             decky.logger.error(f"mise à jour de FarfaLauncherDeck impossible : {e}")
             return {"error": "update_failed", "message": str(e)}
+
+
+async def latest_tag(repo: str) -> str:
+    """Tag de la dernière release, lu sur la redirection de github.com/<dépôt>/releases/latest
+    (pas l'API de GitHub : 60 appels par heure pour toute la maison)."""
+    out = await _curl(["-fsSIL", "-o", "/dev/null", "-w", "%{url_effective}", f"https://github.com/{repo}/releases/latest"])
+    url = out.decode("utf-8", "replace").strip()
+    if "/releases/tag/" not in url:
+        raise RuntimeError(f"aucune release publiée ({url})")
+    return url.rsplit("/releases/tag/", 1)[1]
 
 
 async def _curl(args: list, timeout: float = 60) -> bytes:
