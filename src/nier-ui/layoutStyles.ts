@@ -192,6 +192,17 @@ export const NIER_LAYOUT_CSS = `
   scrollbar-width: thin;
   scrollbar-color: var(--nier-low) transparent;
 }
+/* Espaces des lignes non dessinées d'une longue liste : l'écart (gap) est déjà dans leur hauteur. */
+.nier-menu-spacer {
+  flex: none;
+  pointer-events: none;
+}
+.nier-menu-spacer[data-edge="before"] {
+  margin-bottom: -8px;
+}
+.nier-menu-spacer[data-edge="after"] {
+  margin-top: -8px;
+}
 .nier-menu-item {
   display: flex;
   align-items: center;

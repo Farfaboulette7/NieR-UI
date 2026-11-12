@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 export interface NierField {
   label: string;
@@ -11,12 +11,16 @@ export interface NierGameDetailProps {
   imageAlt?: string;
   /** false : pas de cadre d'image du tout (réglages, textes). */
   art?: boolean;
+  /** Cadre d'image moins haut, pour laisser la place aux actions. */
+  compact?: boolean;
+  /** Contenu placé juste sous l'image (actions…), avant les champs. */
+  actions?: ReactNode;
   fields?: NierField[];
   description?: string;
 }
 
 /** Contenu type de la zone de droite. Les styles viennent de <NierStyles />. */
-export function NierGameDetail({ image, imageAlt = "", art = true, fields = [], description }: NierGameDetailProps) {
+export function NierGameDetail({ image, imageAlt = "", art = true, compact = false, actions, fields = [], description }: NierGameDetailProps) {
   const images = image ? (Array.isArray(image) ? image : [image]) : [];
   // Index de l'image en cours ; on passe à la suivante si elle ne charge pas.
   const [attempt, setAttempt] = useState({ key: images.join("|"), index: 0 });
@@ -27,10 +31,20 @@ export function NierGameDetail({ image, imageAlt = "", art = true, fields = [], 
   return (
     <div className="nier-game">
       {art && (
-        <div className="nier-game-art" data-empty={!src}>
-          {src ? <img src={src} alt={imageAlt} onError={() => setAttempt({ key, index: index + 1 })} /> : "No visual data"}
+        <div className="nier-game-art" data-empty={!src} data-compact={compact}>
+          {src ? (
+            <>
+              {/* Image entière dans le cadre, sur un fond flou d'elle-même (bannière, jaquette verticale…). */}
+              <img className="nier-game-art-backdrop" src={src} alt="" aria-hidden="true" />
+              <img className="nier-game-art-image" src={src} alt={imageAlt} onError={() => setAttempt({ key, index: index + 1 })} />
+            </>
+          ) : (
+            "No visual data"
+          )}
         </div>
       )}
+
+      {actions}
 
       {fields.length > 0 && (
         <dl className="nier-game-fields">

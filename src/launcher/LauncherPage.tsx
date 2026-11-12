@@ -1,6 +1,6 @@
 import { Navigation, Router } from "@decky/ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NierGameDetail, NierHint, NierIntro, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierMenuItem, type NierOption } from "../nier-ui";
+import { NierGameDetail, NierHint, NierIntro, NierLayout, NierMeter, NierOptionList, NierSlideOver, NierStatus, type NierOption } from "../nier-ui";
 import { loadMedia, playSfx, playTrack, useMedia, useNowPlaying, type NowPlaying } from "./audio";
 import { MusicFooter, onMusicViewRequest, takeMusicViewRequest } from "./MusicFooter";
 import { GamePanel, openOriginalPage } from "./GamePage";
@@ -11,6 +11,10 @@ import { LANGS, t, type StringKey } from "./i18n";
 import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
+import type { TabView } from "./tabView";
+import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueView } from "../catalogue/CatalogueTab";
+import { ct } from "../catalogue/i18n";
+import { catalogueReady, useCatalogue } from "../catalogue/store";
 import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
 import {
   formatLastPlayed,
@@ -52,34 +56,6 @@ const SLEEP_GAP_MS = 8000;
 
 declare const SteamClient: any;
 
-/** Liste de la zone de droite qui peut prendre la main. */
-interface PanelDef {
-  rows: string[];
-  initial?: string;
-  activate: (row: string) => void;
-  /** Gauche / droite sur une ligne réglable (volume, luminosité) ; true si pris en charge. */
-  adjust?: (row: string, delta: number) => boolean;
-  adjustable?: (row: string) => boolean;
-}
-
-/** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
-interface TabView {
-  menuTitle: string;
-  items: NierMenuItem[];
-  /** Zone de droite pour l'item sélectionné (undefined si la liste est vide) ; `row` : ligne choisie dans son panneau. */
-  detail: (id: string | undefined, row?: string) => { title: string; content: ReactNode };
-  activate: (id: string) => void;
-  /** Libellé de A pour l'item sélectionné ; rien = pas d'aide. */
-  hint?: (id: string) => string | undefined;
-  /** B dans l'onglet (sortir d'une collection...). true si pris en charge. */
-  back?: () => boolean;
-  /** Gauche / droite sur un item réglable (volume) ; true si pris en charge. */
-  adjust?: (id: string, delta: number) => boolean;
-  /** L'item sélectionné se règle avec gauche / droite (aide affichée). */
-  adjustable?: (id: string) => boolean;
-  /** Item dont la zone de droite est une liste de choix : A y entre, haut/bas choisit, B en sort. */
-  panel?: (id: string) => PanelDef | undefined;
-}
 
 export function LauncherPage() {
   const time = useClock();
@@ -130,7 +106,13 @@ export function LauncherPage() {
   const [items, setItems] = useState(remembered.items);
   const [collectionId, setCollectionIdState] = useState(remembered.collectionId);
   // Une collection ouverte a sa propre sélection.
-  const tabKey = tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId;
+  // Catalogue FarfaLauncher : onglet affiché seulement quand un serveur est réglé.
+  const cat = useCatalogue();
+  const catReady = catalogueReady();
+  const tabs = TABS.map((x) => ({ id: x.id, label: t(x.label) }));
+  if (catReady) tabs.splice(3, 0, { id: "catalogue", label: ct("tab") });
+  const tabKey =
+    tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
   const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
   const setItemId = (id: string | undefined) => setItems((remembered.items = { ...remembered.items, [tabKey]: id }));
   const setCollectionId = (id: string | undefined) => setCollectionIdState((remembered.collectionId = id));
@@ -196,8 +178,10 @@ export function LauncherPage() {
         });
   } else if (tabId === "store") {
     view = wishlistView(wishlist);
+  } else if (tabId === "catalogue" && catReady) {
+    view = catalogueView(cat);
   } else {
-    view = systemView(settings, updates, media, nowPlaying, sfxSetup, steamSystem, storage);
+    view = systemView(settings, updates, media, nowPlaying, sfxSetup, steamSystem, storage, cat);
   }
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
@@ -275,9 +259,9 @@ export function LauncherPage() {
         return true;
       case "prevTab":
       case "nextTab": {
-        const t = TABS.findIndex((x) => x.id === tabId);
+        const t = tabs.findIndex((x) => x.id === tabId);
         playSfx("tab");
-        setTabId(TABS[stepIndex(t, action === "prevTab" ? -1 : 1, TABS.length, true)].id);
+        setTabId(tabs[stepIndex(t, action === "prevTab" ? -1 : 1, tabs.length, true)].id);
         return true;
       }
       case "confirm":
@@ -298,7 +282,7 @@ export function LauncherPage() {
     // Plein écran, sous les autres pages Steam (z-index bas).
     <NierScreen zIndex={1} onAction={onAction}>
       <NierLayout
-        tabs={TABS.map((x) => ({ id: x.id, label: t(x.label) }))}
+        tabs={tabs}
         activeTabId={tabId}
         onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
@@ -515,6 +499,7 @@ function systemView(
   sfxSetup: ReturnType<typeof useSfxSetup>,
   system: SteamSystemState,
   storage: StorageDrive[],
+  cat: ReturnType<typeof useCatalogue>,
 ): TabView {
   const status = updates.status;
   const tracks = media?.music ?? [];
@@ -651,6 +636,7 @@ function systemView(
       { id: "volume", label: t("volume") },
       { id: "language", label: t("language"), badge: LANGS.find((l) => l.id === settings.language)?.label },
       { id: "updates", label: t("updates"), badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
+      catalogueSettingsItem(cat),
       { id: "steam", label: t("steamSettings") },
       { id: "diagnostic", label: t("diagnostic") },
     ],
@@ -670,6 +656,7 @@ function systemView(
           ),
         };
       }
+      if (id === catalogueSettingsId) return { title: t("tabSystem"), content: catalogueSettingsDetail(cat, row) };
       if (id === "updates") {
         return {
           title: t("updates"),
@@ -715,6 +702,7 @@ function systemView(
       }
     },
     panel: (id) => {
+      if (id === catalogueSettingsId) return catalogueSettingsPanel(cat);
       if (id === "options") {
         return {
           rows: TOGGLES.map((x) => x.id),

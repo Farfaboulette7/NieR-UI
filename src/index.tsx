@@ -10,6 +10,7 @@ import { getSettings, loadSettings, onSettingsChange, updateSettings, useSetting
 import { LANGS, t } from "./launcher/i18n";
 import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
+import { bindCatalogueEvents, loadCatalogue } from "./catalogue/store";
 
 const HOME_ROUTE = "/library/home";
 const GAME_ROUTE = "/library/app/:appid";
@@ -97,6 +98,9 @@ export default definePlugin(() => {
   const stopSync = onSettingsChange(syncMenuTheme);
   void loadSettings();
   refreshLocalIndex(true);
+  // Catalogue FarfaLauncher : état du moteur et installations en cours.
+  const unbindCatalogue = bindCatalogueEvents();
+  void loadCatalogue();
   // Laisse Steam finir de démarrer avant d'interroger GitHub.
   const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
 
@@ -132,6 +136,7 @@ export default definePlugin(() => {
     icon: <NierIcon />,
     onDismount() {
       stopSync();
+      unbindCatalogue();
       clearTimeout(updateTimer);
       setSteamMenuTheme(false);
       stopMusic();

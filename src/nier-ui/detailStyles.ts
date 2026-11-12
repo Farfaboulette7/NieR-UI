@@ -12,11 +12,29 @@ export const NIER_DETAIL_CSS = `
   background-color: var(--nier-mid-trans);
   overflow: hidden;
 }
+.nier-game-art[data-compact="true"] {
+  aspect-ratio: auto;
+  height: 210px;
+}
+/* L'image entière (bannière large, jaquette verticale…), sur un fond flou d'elle-même. */
 .nier-game-art img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
+}
+.nier-game-art-image {
+  object-fit: contain;
+}
+.nier-game-art-backdrop {
+  object-fit: cover;
+  transform: scale(1.15);
+  filter: blur(18px) grayscale(0.35);
+  opacity: 0.55;
+}
+.nier-game-art::before {
+  z-index: 1;
 }
 /* Sans visuel : hachures fines + libellé, comme un écran de données vide */
 .nier-game-art[data-empty="true"] {

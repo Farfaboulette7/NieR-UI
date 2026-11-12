@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, type ReactNode, type Ref } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { NIER_TOKENS_CSS, type NierTheme } from "./tokens";
 import { NIER_LAYOUT_CSS } from "./layoutStyles";
 import { NIER_FONTS_CSS } from "./fonts";
@@ -104,6 +104,60 @@ const MenuRow = memo(
     a.onActivate === b.onActivate,
 );
 
+/** Lignes dessinées à la fois dans une longue liste. */
+const MENU_WINDOW = 50;
+/** En dessous, toute la liste est dessinée. */
+const MENU_WINDOW_MIN = 70;
+/** Le curseur à moins de tant de lignes d'un bord de la fenêtre : elle se recentre. */
+const MENU_WINDOW_MARGIN = 12;
+
+/**
+ * Fenêtre de lignes dessinées d'une longue liste (centaines de jeux) : autour du
+ * curseur, ou de la zone affichée quand on fait défiler au doigt. Les lignes ont
+ * toutes la même hauteur ; l'espace des autres est réservé par deux espaceurs.
+ */
+function useMenuWindow(listRef: RefObject<HTMLUListElement | null>, count: number, active: number, resetKey?: string) {
+  const [start, setStart] = useState(0);
+  // Hauteur d'une ligne, écart compris, mesurée sur la liste dessinée.
+  const [pitch, setPitch] = useState(52);
+  const windowed = count > MENU_WINDOW_MIN;
+  const center = (i: number) => Math.max(0, Math.min(count - MENU_WINDOW, i - Math.floor(MENU_WINDOW / 2)));
+
+  // Curseur près d'un bord (ou hors) de la fenêtre : recentrée sur lui.
+  useLayoutEffect(() => {
+    if (!windowed) return;
+    if (active < start + MENU_WINDOW_MARGIN || active >= start + MENU_WINDOW - MENU_WINDOW_MARGIN) {
+      const next = center(active);
+      if (next !== start) setStart(next);
+    }
+  }, [active, count, windowed]);
+  useLayoutEffect(() => {
+    if (windowed) setStart(center(active));
+  }, [resetKey]);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const rows = list?.querySelectorAll<HTMLElement>(".nier-menu-item");
+    if (!list || !rows || rows.length < 2) return;
+    const measured = rows[1].parentElement!.offsetTop - rows[0].parentElement!.offsetTop;
+    if (measured > 0 && Math.abs(measured - pitch) > 0.5) setPitch(measured);
+  });
+
+  const onScroll = () => {
+    const list = listRef.current;
+    if (!windowed || !list) return;
+    // Défilement au doigt : la fenêtre suit la zone affichée.
+    const first = Math.floor(list.scrollTop / pitch);
+    const visible = Math.ceil(list.clientHeight / pitch);
+    if (first < start || first + visible > start + MENU_WINDOW) setStart(center(first + Math.floor(visible / 2)));
+  };
+
+  if (!windowed) return { start: 0, end: count, before: 0, after: 0, onScroll };
+  const s = Math.min(start, Math.max(0, count - MENU_WINDOW));
+  const end = Math.min(count, s + MENU_WINDOW);
+  return { start: s, end, before: s * pitch, after: (count - end) * pitch, onScroll };
+}
+
 export function NierLayout({
   title = "MENU",
   tabs = [],
@@ -124,6 +178,8 @@ export function NierLayout({
   theme = "light",
 }: NierLayoutProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  const activeIndex = Math.max(0, menuItems.findIndex((i) => i.id === activeItemId));
+  const win = useMenuWindow(listRef, menuItems.length, activeIndex, activeTabId);
   // Rappels stables pour les lignes mémorisées (l'hôte en recrée à chaque rendu).
   const handlers = useRef({ onItemSelect, onItemActivate });
   handlers.current = { onItemSelect, onItemActivate };
@@ -141,7 +197,7 @@ export function NierLayout({
     } else if (item.offsetTop + item.offsetHeight + margin > list.scrollTop + list.clientHeight) {
       list.scrollTop = item.offsetTop + item.offsetHeight + margin - list.clientHeight;
     }
-  }, [activeItemId, activeTabId]);
+  }, [activeItemId, activeTabId, win.start]);
 
   return (
     <div className="nier-root" data-nier-theme={theme}>
@@ -174,10 +230,14 @@ export function NierLayout({
       <main className="nier-body">
         <nav className="nier-menu">
           {menuTitle && <h2 className="nier-section-title">{menuTitle}</h2>}
-          <ul className="nier-menu-list" role="listbox" ref={listRef}>
-            {menuItems.map((item) => (
+          <ul className="nier-menu-list" role="listbox" ref={listRef} onScroll={win.onScroll}>
+            {/* Longue liste : seules les lignes autour du curseur sont dessinées ; les
+                espaces gardent la hauteur (et la barre de défilement) de la liste entière. */}
+            {win.before > 0 && <li aria-hidden="true" className="nier-menu-spacer" data-edge="before" style={{ height: win.before }} />}
+            {menuItems.slice(win.start, win.end).map((item) => (
               <MenuRow key={item.id} item={item} selected={item.id === activeItemId} onSelect={select} onActivate={activate} />
             ))}
+            {win.after > 0 && <li aria-hidden="true" className="nier-menu-spacer" data-edge="after" style={{ height: win.after }} />}
           </ul>
         </nav>
 

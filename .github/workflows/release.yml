@@ -39,7 +39,7 @@ jobs:
       - name: Préparer le zip Decky
         run: |
           mkdir -p package/NieRDeck
-          cp -r dist package.json plugin.json main.py README.md package/NieRDeck/
+          cp -r dist package.json plugin.json main.py catalogue.py README.md package/NieRDeck/
           cp src/nier-ui/fonts/OFL.txt package/NieRDeck/LICENSE-font.txt
           cd package && zip -r ../NieRDeck.zip NieRDeck
 

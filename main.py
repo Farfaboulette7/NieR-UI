@@ -4,13 +4,18 @@ import json
 import os
 import re
 import secrets
+import sys
 from urllib.parse import unquote
 
 import decky
 
+# Module Catalogue (jeux du serveur RomM de FarfaLauncher), dans son propre fichier.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from catalogue import Catalogue  # noqa: E402
+
 
 def _settings_path() -> str:
-    return os.path.join(decky.DECKY_SETTINGS_DIR, "settings.json")
+    return os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
 
 def _installed_version() -> str:
@@ -180,7 +185,7 @@ async def _serve(reader, writer):
             status = "206 Partial Content"
         headers = {
             **base,
-            "Content-Type": AUDIO_EXT.get(ext) or "application/octet-stream",
+            "Content-Type": AUDIO_EXT.get(ext) or IMAGE_EXT.get(ext) or "application/octet-stream",
             "Accept-Ranges": "bytes",
             "Content-Length": str(end - start + 1),
         }
@@ -219,7 +224,52 @@ async def _ensure_server():
         _media.server = None
 
 
+IMAGE_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml"}
+
+
+def _file_url(path: str):
+    """URL du serveur local pour un fichier du Deck (images du catalogue)."""
+    if _media.server is None:
+        return None
+    return f"http://127.0.0.1:{_media.port}/{_media.token}/{_register(path)}"
+
+
+_catalogue = Catalogue(_file_url)
+
+
 class Plugin:
+    # ───── catalogue FarfaLauncher (catalogue.py) ─────
+    async def catalogue_status(self):
+        return await _catalogue.status()
+
+    async def catalogue_call(self, args: list):
+        return await _catalogue.call(args)
+
+    async def catalogue_configure(self, server: str = "", token: str = ""):
+        return await _catalogue.configure(server or None, token or None)
+
+    async def catalogue_install(self, rom_id: int, emulator: str = ""):
+        return await _catalogue.install(int(rom_id), emulator or None)
+
+    async def catalogue_installing(self):
+        return _catalogue.installing()
+
+    async def catalogue_image(self, url: str):
+        await _ensure_server()
+        return await _catalogue.image(url)
+
+    async def catalogue_image_base64(self, url: str):
+        return await _catalogue.image_base64(url)
+
+    async def catalogue_shortcuts(self):
+        return _catalogue.shortcuts()
+
+    async def catalogue_set_shortcut(self, rom_id: int, appid: int = 0):
+        return _catalogue.set_shortcut(int(rom_id), int(appid) or None)
+
+    async def catalogue_update_cli(self):
+        return await _catalogue.update_cli()
+
     async def _main(self):
         decky.logger.info("NieRDeck chargé")
 
