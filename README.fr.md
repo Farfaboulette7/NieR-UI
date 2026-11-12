@@ -56,6 +56,12 @@ Ensuite, dans **Système** :
   - choisir un morceau.
 - **Volume des bruitages** et **Volume de la musique** se règlent avec ← →.
 
+## Catalogue (FarfaLauncher)
+
+Pour ceux qui ont un serveur RomM avec [FarfaLauncher](https://github.com/Farfaboulette7/FarfaLauncher) : l'onglet **Catalogue** liste les jeux du serveur par console (recomps en tête), les installe avec les réglages de FarfaLauncher (langue, configuration des émulateurs, réglages optimisés) et crée leur page dans la bibliothèque Steam, avec les images de RomM. Les sauvegardes sont reprises du serveur au lancement et y repartent à la fermeture du jeu.
+
+Réglage dans **Système → FarfaLauncher** : *Installer / mettre à jour le moteur* (FarfaLauncherDeck, publié avec chaque version de FarfaLauncher), puis l'adresse du serveur et le jeton RomM (Profil → jetons d'API dans RomM). Sans serveur réglé, l'onglet n'apparaît pas.
+
 ## Commandes
 
 | Bouton | Action |
@@ -89,6 +95,7 @@ Tous activés par défaut, dans **Système** ou dans ··· → NieRDeck :
 | `src/launcher/` | Le côté Decky : données (bibliothèque, Magasin, succès, contacts), manette, audio, thème Steam, réglages, traductions (`i18n.ts`). |
 | `src/index.tsx` | Point d'entrée du plugin : remplacement de l'accueil et de la page de jeu, panneau d'accès rapide. |
 | `main.py` | Backend : fichier de réglages, version installée, serveur local des fichiers audio. |
+| `src/catalogue/`, `catalogue.py` | Onglet Catalogue (FarfaLauncher) : interface, et backend qui appelle le moteur FarfaLauncherDeck. |
 | `.github/workflows/release.yml` | Compile et publie `NieRDeck.zip` à chaque push. |
 
 ## Compilation

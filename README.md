@@ -56,6 +56,12 @@ Then, in **System**:
   - pick a track.
 - **Sound effects volume** and **Music volume** are adjusted with ← →.
 
+## Catalogue (FarfaLauncher)
+
+For people with a RomM server running [FarfaLauncher](https://github.com/Farfaboulette7/FarfaLauncher): the **Catalogue** tab lists the server games by console (recomps first), installs them with FarfaLauncher's settings (language, emulator configuration, optimized settings) and creates their page in the Steam library, with RomM artwork. Saves are pulled from the server at launch and sent back when the game closes.
+
+Set it up in **System → FarfaLauncher**: *Install / update the engine* (FarfaLauncherDeck, released with each FarfaLauncher version), then the server address and RomM token (Profile → API tokens in RomM). Without a server, the tab stays hidden.
+
 ## Controls
 
 | Button | Action |
@@ -89,6 +95,7 @@ All on by default, in **System** or in ··· → NieRDeck:
 | `src/launcher/` | The Decky side: data (library, store, achievements, friends), gamepad input, audio, Steam theme, settings, translations (`i18n.ts`). |
 | `src/index.tsx` | Plugin entry point: route patches (home screen, game page) and the quick access panel. |
 | `main.py` | Backend: settings file, installed version, local server for the audio files. |
+| `src/catalogue/`, `catalogue.py` | Catalogue tab (FarfaLauncher): UI, and backend calling the FarfaLauncherDeck engine. |
 | `.github/workflows/release.yml` | Builds and publishes `NieRDeck.zip` on every push. |
 
 ## Build
