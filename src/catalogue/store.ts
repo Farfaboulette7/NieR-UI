@@ -70,8 +70,61 @@ interface GameList {
 const backendStatus = callable<[], CatStatus>("catalogue_status");
 const backendCall = callable<[args: (string | number)[]], CliResult<any>>("catalogue_call");
 const backendConfigure = callable<[server: string, token: string], CliResult<CatInfo>>("catalogue_configure");
-const backendInstall = callable<[romId: number, emulator: string], boolean>("catalogue_install");
+const backendInstall = callable<[romId: number, emulator: string, recomp: string], boolean>("catalogue_install");
+const backendUpdateIfNewer = callable<[], CliResult<{ version: string; updated: boolean }>>("catalogue_update_cli_if_newer");
+
+/** Langue d'un jeu installé : null = pas de choix pour ce jeu. */
+export interface CatLanguage {
+  language: "fr" | "en" | null;
+  bo3: boolean;
+}
+
+export interface CatSaveVersion {
+  version: string;
+  savedAt: string;
+  replacedAt: string;
+  size: number;
+  device?: string | null;
+}
+
+/** Façon de jouer installée (recomp ou émulateur), celle en service d'abord. */
+export interface CatWay {
+  kind: "recomp" | "emulator";
+  id: string;
+  version: string | null;
+  active: boolean;
+}
+
+/** Recomp ou émulateur proposé pour un jeu, avec ce que l'onglet Informations du launcher en montre. */
+export interface CatOffer {
+  kind: "recomp" | "emulator";
+  id: string;
+  name: string;
+  available: boolean;
+  version: string;
+  size: number;
+  systems: string[];
+  repo: string | null;
+  advice: string | null;
+  configMissing: string[];
+}
+
+export interface CatRanking {
+  id: number;
+  username: string;
+  totalMs: number;
+  sessions?: number;
+}
+
+export interface CatSheet {
+  playtimeMs: number | null;
+  ranking: CatRanking[] | null;
+  shaders: Record<string, { count: number; players: number[]; sessions: { at: string; added: number }[] }> | null;
+  changelog: { kind: string; name: string; version: string; date: string | null; url: string | null; notes: string } | null;
+  rommPage: string;
+}
 const backendInstalling = callable<[], number[]>("catalogue_installing");
+const backendCancel = callable<[romId: number], boolean>("catalogue_cancel");
 const backendImage = callable<[url: string], string | null>("catalogue_image");
 const backendShortcuts = callable<[], Record<string, number>>("catalogue_shortcuts");
 const backendUpdate = callable<[], CliResult<{ version: string }>>("catalogue_update_cli");
@@ -90,9 +143,31 @@ interface CatState {
   /** Réglages / actions en cours (Système → FarfaLauncher). */
   busy: string | null;
   notice: string | null;
+  languages: Record<number, CatLanguage>;
+  /** Page de jeu ouverte dans l'onglet (sous la liste `openList`). */
+  openGame: number | null;
+  /** Reste de la fiche (temps de jeu, nouveautés, classement, shaders). */
+  sheets: Record<number, CatSheet | "loading">;
+  /** Historique des sauvegardes affiché à la place des actions d'un jeu. */
+  history: { romId: number; versions: CatSaveVersion[] | null; error?: string; confirm: string | null } | null;
 }
 
-const state: CatState = { status: null, consoles: null, openList: null, lists: {}, details: {}, images: {}, progress: {}, shortcuts: {}, busy: null, notice: null };
+const state: CatState = {
+  status: null,
+  consoles: null,
+  openList: null,
+  lists: {},
+  details: {},
+  images: {},
+  progress: {},
+  shortcuts: {},
+  busy: null,
+  notice: null,
+  languages: {},
+  history: null,
+  openGame: null,
+  sheets: {},
+};
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((l) => l());
 
@@ -110,11 +185,28 @@ export async function loadCatalogue(attempt = 0) {
     state.status = await backendStatus();
     state.shortcuts = (await backendShortcuts()) ?? {};
     for (const id of (await backendInstalling()) ?? []) state.progress[id] ??= { phase: "prepare", done: 0, total: 0 };
+    void autoUpdateEngine();
   } catch (e) {
     console.error("[NieRDeck] catalogue", e);
     if (attempt < 12) setTimeout(() => void loadCatalogue(attempt + 1), 5000);
   }
   changed();
+}
+
+/** Une fois par démarrage : le moteur suit la dernière version publiée de FarfaLauncher. */
+let autoUpdated = false;
+async function autoUpdateEngine() {
+  if (autoUpdated || !state.status?.cli) return;
+  autoUpdated = true;
+  try {
+    const r = await backendUpdateIfNewer();
+    if (r.data?.updated) {
+      toaster.toast({ title: "NieRDeck", body: ct("updated", { version: r.data.version }) });
+      await refreshStatus();
+    }
+  } catch (e) {
+    console.error("[NieRDeck] mise à jour du moteur", e);
+  }
 }
 
 // ───── événements de l'installation (catalogue.py) ─────
@@ -161,7 +253,10 @@ async function installFinished(r: CliResult<any> & { romId: number }) {
   delete progress[romId];
   state.progress = progress;
   const game = knownGame(romId);
-  if (r.error) {
+  if (r.error === "cancelled") {
+    toaster.toast({ title: "NieRDeck", body: ct("installCancelled", { name: game.name }) });
+    delete state.details[romId];
+  } else if (r.error) {
     toaster.toast({ title: "NieRDeck", body: ct("installFailed", { name: game.name, error: errorText(r) }) });
   } else if (r.data?.status === "needsChoice") {
     markInstalled(romId, true);
@@ -257,6 +352,144 @@ export async function loadDetails(romId: number, force = false) {
   const r = await backendCall(["jeu", romId]);
   state.details = { ...state.details, [romId]: r.data ?? { error: errorText(r) } };
   changed();
+  // Jeu installé : sa langue, si elle se choisit.
+  if (r.data?.installed?.executable) {
+    const l = await backendCall(["langue", romId]);
+    if (l.data) {
+      state.languages = { ...state.languages, [romId]: l.data };
+      changed();
+    }
+  }
+}
+
+/** Recomps et émulateurs proposés pour un jeu (fiche du moteur), comme le launcher. */
+export function offersOf(d: CatDetails | undefined): CatOffer[] {
+  const g = d?.game;
+  if (!g || g.pc) return [];
+  const recomps: CatOffer[] = g.recomp
+    ? (g.recomps?.length
+        ? g.recomps
+        : [
+            {
+              id: g.recompId ?? "recomp",
+              name: g.runtime?.name ?? "Recomp",
+              available: d!.installWith === "recomp",
+              version: g.serverVersion ?? "",
+              size: g.myArchive?.size ?? 0,
+              systems: (g.archives ?? []).map((a: any) => a.target),
+              repo: g.runtime?.repo ?? null,
+            },
+          ]
+      ).map((r: any) => ({
+        kind: "recomp" as const,
+        id: r.id,
+        name: r.name,
+        available: !!r.available,
+        version: r.version ?? "",
+        size: r.size ?? 0,
+        systems: r.systems ?? [],
+        repo: r.repo ?? null,
+        advice: r.advice ?? null,
+        configMissing: [],
+      }))
+    : [];
+  const emulators: CatOffer[] = (g.emulators ?? []).map((e: any) => ({
+    kind: "emulator" as const,
+    id: e.id,
+    name: e.name,
+    available: !!e.available && !e.configMissing?.length,
+    version: e.version ?? "",
+    size: e.size ?? 0,
+    systems: e.systems ?? [],
+    repo: e.repo ?? null,
+    advice: e.advice ?? null,
+    configMissing: e.configMissing ?? [],
+  }));
+  return [...recomps, ...emulators];
+}
+
+/** Façons de jouer installées (vides pour un jeu PC ou une installation inachevée). */
+export function waysOf(d: CatDetails | undefined): CatWay[] {
+  return d?.installed?.executable ? (d.installed.ways ?? []) : [];
+}
+
+export function wayName(d: CatDetails | undefined, kind: string, id: string): string {
+  return offersOf(d).find((o) => o.kind === kind && o.id === id)?.name ?? id;
+}
+
+/** Joue avec une autre façon déjà installée. */
+export async function useWay(romId: number, kind: string, id: string) {
+  const d = state.details[romId] as CatDetails | undefined;
+  const name = knownGame(romId).name;
+  const way = wayName(typeof d === "object" && d && "game" in d ? d : undefined, kind, id);
+  const r = await backendCall(["utiliser", romId, kind, id]);
+  toaster.toast({ title: "NieRDeck", body: r.error ? ct("error", { error: errorText(r) }) : ct("wayChanged", { name, way }) });
+  delete state.details[romId];
+  delete state.lists.installed;
+  changed();
+  void loadDetails(romId, true);
+}
+
+/** Met le jeu en français ou en anglais. */
+export async function setLanguage(romId: number, lang: "fr" | "en") {
+  if (state.languages[romId]?.language === lang) return;
+  await toggleLanguage(romId);
+}
+
+/** Bascule la langue du jeu (Français ↔ English). */
+export async function toggleLanguage(romId: number) {
+  const cur = state.languages[romId];
+  if (!cur?.language) return;
+  const next = cur.language === "fr" ? "en" : "fr";
+  const r = await backendCall(["langue", romId, next]);
+  if (r.error) {
+    toaster.toast({ title: "NieRDeck", body: ct("error", { error: errorText(r) }) });
+    return;
+  }
+  state.languages = { ...state.languages, [romId]: r.data };
+  toaster.toast({ title: "NieRDeck", body: ct("languageChanged", { name: knownGame(romId).name, lang: ct(r.data.language === "en" ? "langEn" : "langFr") }) });
+  changed();
+}
+
+export const formatDate = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+};
+
+export async function openHistory(romId: number) {
+  state.history = { romId, versions: null, confirm: null };
+  changed();
+  const r = await backendCall(["historique", romId]);
+  if (state.history?.romId !== romId) return;
+  state.history = { romId, versions: r.data?.versions ?? [], error: r.error ? errorText(r) : undefined, confirm: null };
+  changed();
+}
+
+export function closeHistory() {
+  state.history = null;
+  changed();
+}
+
+/** Premier appui : demande confirmation ; second appui sur la même version : la remet. */
+export async function pickVersion(romId: number, version: string) {
+  const h = state.history;
+  if (!h || h.romId !== romId) return;
+  if (h.confirm !== version) {
+    state.history = { ...h, confirm: version };
+    changed();
+    return;
+  }
+  const v = h.versions?.find((x) => x.version === version);
+  const r = await backendCall(["restaurer", romId, version]);
+  toaster.toast({
+    title: "NieRDeck",
+    body: r.error ? ct("error", { error: errorText(r) }) : ct("restored", { name: knownGame(romId).name, date: v ? formatDate(v.savedAt) : version }),
+  });
+  if (!r.error) void openHistory(romId);
+  else {
+    state.history = { ...h, confirm: null };
+    changed();
+  }
 }
 
 /** Image du serveur, servie en local (null : pas d'image). */
@@ -279,15 +512,52 @@ export function imageUrl(url: string | null | undefined): string | undefined {
   return cur && cur !== "loading" ? cur : undefined;
 }
 
-export async function install(romId: number, emulator = "") {
+/** Installe le jeu avec l'émulateur ou la recomp choisis (sinon ceux conseillés). Une autre
+ * façon déjà installée reste sur le disque, en réserve. */
+export async function install(romId: number, emulator = "", recomp = "") {
+  if (state.progress[romId]) return;
   state.progress = { ...state.progress, [romId]: { phase: "prepare", done: 0, total: 0 } };
   changed();
-  const started = await backendInstall(romId, emulator);
+  const started = await backendInstall(romId, emulator, recomp);
   if (!started) {
     const progress = { ...state.progress };
     delete progress[romId];
     state.progress = progress;
     changed();
+  }
+}
+
+function clearProgress(romId: number) {
+  const progress = { ...state.progress };
+  delete progress[romId];
+  state.progress = progress;
+  delete state.details[romId];
+  delete state.lists.installed;
+  changed();
+}
+
+/** Annule l'installation en cours. La fin arrive par l'événement catalogue_done ; pour une
+ * installation lancée avant un redémarrage du plugin (pas d'événement), on attend que le
+ * moteur se soit arrêté. */
+export async function cancelInstall(romId: number) {
+  const p = state.progress[romId];
+  if (!p || p.phase === "cancel") return;
+  state.progress = { ...state.progress, [romId]: { ...p, phase: "cancel" } };
+  changed();
+  if (!(await backendCancel(romId))) {
+    // Plus d'installation en cours côté moteur : l'état affiché était périmé.
+    clearProgress(romId);
+    return;
+  }
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (state.progress[romId]?.phase !== "cancel") return;
+    const running = (await backendInstalling()) ?? [];
+    if (!running.includes(romId)) {
+      clearProgress(romId);
+      toaster.toast({ title: "NieRDeck", body: ct("installCancelled", { name: knownGame(romId).name }) });
+      return;
+    }
   }
 }
 
@@ -374,6 +644,37 @@ export function useCatalogue(): CatState {
 /** Ouvre une liste de jeux dans l'onglet (null : retour aux consoles). */
 export function setOpenList(key: string | null) {
   state.openList = key;
+  state.openGame = null;
   changed();
   if (key) void loadList(key);
+}
+
+/** Ouvre la page d'un jeu (null : retour à la liste). */
+export function setOpenGame(romId: number | null) {
+  state.openGame = romId;
+  state.history = null;
+  changed();
+  if (romId != null) {
+    void loadDetails(romId).then(() => void loadSheet(romId));
+  }
+}
+
+export async function loadSheet(romId: number, force = false) {
+  if (state.sheets[romId] && !force) return;
+  state.sheets = { ...state.sheets, [romId]: "loading" };
+  changed();
+  const d = state.details[romId];
+  const console = d && typeof d === "object" && "game" in d ? (d.game?.console ?? "") : "";
+  const r = await backendCall(["fiche", romId, console]);
+  const sheets = { ...state.sheets };
+  if (r.data) sheets[romId] = r.data;
+  else delete sheets[romId];
+  state.sheets = sheets;
+  changed();
+}
+
+/** Synchronise la sauvegarde d'un jeu (fiche → Sauvegardes). */
+export async function syncGame(romId: number) {
+  const r = await backendCall(["synchroniser", romId]);
+  toaster.toast({ title: "NieRDeck", body: r.error ? ct("error", { error: errorText(r) }) : ct("synced", { n: r.data?.games?.length ?? 0 }) });
 }

@@ -248,8 +248,11 @@ class Plugin:
     async def catalogue_configure(self, server: str = "", token: str = ""):
         return await _catalogue.configure(server or None, token or None)
 
-    async def catalogue_install(self, rom_id: int, emulator: str = ""):
-        return await _catalogue.install(int(rom_id), emulator or None)
+    async def catalogue_install(self, rom_id: int, emulator: str = "", recomp: str = ""):
+        return await _catalogue.install(int(rom_id), emulator or None, recomp or None)
+
+    async def catalogue_cancel(self, rom_id: int):
+        return _catalogue.cancel(int(rom_id))
 
     async def catalogue_installing(self):
         return _catalogue.installing()
@@ -269,6 +272,9 @@ class Plugin:
 
     async def catalogue_update_cli(self):
         return await _catalogue.update_cli()
+
+    async def catalogue_update_cli_if_newer(self):
+        return await _catalogue.update_cli_if_newer()
 
     async def _main(self):
         decky.logger.info("NieRDeck chargé")

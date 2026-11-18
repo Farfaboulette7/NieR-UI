@@ -22,8 +22,8 @@ import decky
 CLI_NAME = "FarfaLauncherDeck-linux-x86_64"
 LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
-READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser"}
-WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion"}
+READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique"}
+WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer"}
 TIMEOUT = 180
 
 
@@ -45,9 +45,9 @@ def _shortcuts_path() -> str:
     return os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "catalogue.json")
 
 
-async def run(args: list, stdin: str | None = None, on_line=None, timeout: float = TIMEOUT) -> dict:
+async def run(args: list, stdin: str | None = None, on_line=None, timeout: float = TIMEOUT, on_proc=None) -> dict:
     """Lance le programme ; renvoie {"data": ...} ou {"error": code, "message": ...}.
-    `on_line` reçoit les autres lignes JSON (progression)."""
+    `on_line` reçoit les autres lignes JSON (progression), `on_proc` le processus lancé."""
     path = cli_path()
     if not os.path.isfile(path):
         return {"error": "cli_missing", "message": "FarfaLauncherDeck n'est pas installé."}
@@ -64,6 +64,8 @@ async def run(args: list, stdin: str | None = None, on_line=None, timeout: float
     except Exception as e:
         decky.logger.error(f"FarfaLauncherDeck impossible à lancer : {e}")
         return {"error": "cli_failed", "message": str(e)}
+    if on_proc is not None:
+        on_proc(proc)
     if stdin is not None:
         proc.stdin.write((stdin + "\n").encode("utf-8"))
         await proc.stdin.drain()
@@ -109,6 +111,8 @@ class Catalogue:
         # Sert un fichier local à l'interface (petit serveur HTTP de NieRDeck) ; renvoie son URL.
         self._register_file = register_file
         self._installs: dict = {}
+        # Processus de chaque installation en cours (pour l'annuler).
+        self._procs: dict = {}
 
     async def status(self) -> dict:
         """Programme installé, sa version, et l'état de la connexion au serveur."""
@@ -130,11 +134,16 @@ class Catalogue:
             args.append("--jeton")
         return await run(args, stdin=token.strip() if token else None, timeout=60)
 
-    async def install(self, rom_id: int, emulator: str | None = None) -> bool:
-        """Installation en arrière-plan : événements catalogue_progress puis catalogue_done."""
+    async def install(self, rom_id: int, emulator: str | None = None, recomp: str | None = None) -> bool:
+        """Installation en arrière-plan : événements catalogue_progress puis catalogue_done.
+        `emulator` ou `recomp` : la façon de jouer choisie (sinon celle conseillée)."""
         if rom_id in self._installs:
             return False
-        args = ["installer", rom_id] + (["--emulateur", emulator] if emulator else [])
+        args = ["installer", rom_id]
+        if emulator:
+            args += ["--emulateur", emulator]
+        elif recomp:
+            args += ["--recomp", recomp]
 
         async def progress(msg):
             if msg.get("type") == "progress":
@@ -142,16 +151,36 @@ class Catalogue:
 
         async def job():
             try:
-                result = await run(args, on_line=progress, timeout=6 * 3600)
+                result = await run(args, on_line=progress, timeout=6 * 3600, on_proc=lambda p: self._procs.__setitem__(rom_id, p))
                 await decky.emit("catalogue_done", {"romId": rom_id, **result})
             finally:
                 self._installs.pop(rom_id, None)
+                self._procs.pop(rom_id, None)
 
         self._installs[rom_id] = asyncio.get_running_loop().create_task(job())
         return True
 
+    def cancel(self, rom_id: int) -> bool:
+        """Annule une installation : le moteur reçoit le signal d'arrêt et s'arrête proprement
+        (comme « Annuler » dans le launcher). Ce qui était déjà installé reste en place."""
+        proc = self._procs.get(rom_id)
+        if proc is not None and proc.returncode is None:
+            decky.logger.info(f"installation du jeu {rom_id} annulée")
+            proc.terminate()
+            return True
+        # Installation lancée avant un redémarrage du plugin : le moteur tourne encore, seul.
+        pid = _orphan_installs().get(rom_id)
+        if pid is None:
+            return False
+        decky.logger.info(f"installation du jeu {rom_id} annulée (moteur {pid}, lancé avant le redémarrage)")
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            return False
+        return True
+
     def installing(self) -> list:
-        return list(self._installs.keys())
+        return sorted(set(self._installs.keys()) | set(_orphan_installs().keys()))
 
     async def image(self, url: str) -> str | None:
         """Image du serveur RomM (avec le jeton), servie à l'interface par le serveur local."""
@@ -194,6 +223,24 @@ class Catalogue:
         os.replace(tmp, _shortcuts_path())
         return data
 
+    async def update_cli_if_newer(self) -> dict:
+        """Met le moteur à jour quand FarfaLauncher a publié une version plus récente que la
+        sienne (ou qu'il manque). Une version de test plus récente n'est jamais remplacée."""
+        try:
+            tag = await latest_tag(LAUNCHER_REPO)
+        except Exception as e:
+            return {"error": "update_failed", "message": str(e)}
+        current = None
+        if os.path.isfile(cli_path()):
+            current = (await run(["version"], timeout=30)).get("data")
+        if current and _version_key(tag) <= _version_key(str(current)):
+            return {"data": {"version": current, "updated": False}}
+        decky.logger.info(f"FarfaLauncherDeck {current or 'absent'} → {tag}")
+        result = await self.update_cli()
+        if "data" in result:
+            result["data"]["updated"] = True
+        return result
+
     # ───── mise à jour du programme depuis les releases du launcher ─────
     async def update_cli(self) -> dict:
         """Télécharge FarfaLauncherDeck de la dernière version de FarfaLauncher (curl :
@@ -217,6 +264,43 @@ class Catalogue:
         except Exception as e:
             decky.logger.error(f"mise à jour de FarfaLauncherDeck impossible : {e}")
             return {"error": "update_failed", "message": str(e)}
+
+
+def _orphan_installs() -> dict:
+    """Moteurs `installer <id>` en cours, lus dans /proc : {id du jeu: pid}. Ils survivent à un
+    redémarrage du plugin (mise à jour), qui perd alors leur trace."""
+    found = {}
+    exe = cli_path()
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return found
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                args = f.read().split(b"\0")
+        except OSError:
+            continue
+        if len(args) >= 3 and args[0].decode("utf-8", "replace") == exe and args[1] == b"installer":
+            try:
+                found[int(args[2])] = int(pid)
+            except ValueError:
+                pass
+    return found
+
+
+def _version_key(v: str) -> tuple:
+    """`v1.1.1` → (1, 1, 1, 1) ; une bêta (`1.2.0-beta.3`) passe avant la stable du même numéro."""
+    v = v.strip().lstrip("v")
+    base, _, pre = v.partition("-")
+    nums = []
+    for part in base.split("."):
+        digits = "".join(c for c in part if c.isdigit())
+        nums.append(int(digits) if digits else 0)
+    while len(nums) < 3:
+        nums.append(0)
+    pre_num = int("".join(c for c in pre if c.isdigit()) or 0) if pre else 0
+    return (*nums[:3], 0 if pre else 1, pre_num)
 
 
 async def latest_tag(repo: str) -> str:

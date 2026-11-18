@@ -112,7 +112,7 @@ export function LauncherPage() {
   const tabs = TABS.map((x) => ({ id: x.id, label: t(x.label) }));
   if (catReady) tabs.splice(3, 0, { id: "catalogue", label: ct("tab") });
   const tabKey =
-    tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
+    tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}${cat.openGame != null ? `:${cat.openGame}` : ""}` : tabId;
   const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
   const setItemId = (id: string | undefined) => setItems((remembered.items = { ...remembered.items, [tabKey]: id }));
   const setCollectionId = (id: string | undefined) => setCollectionIdState((remembered.collectionId = id));
@@ -186,7 +186,13 @@ export function LauncherPage() {
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
   const panelDef = current ? view.panel?.(current.id) : undefined;
-  const panelRow = panel && panelDef && panel.tabKey === tabKey && panel.itemId === current?.id ? panel.row : undefined;
+  // Ligne disparue (« Installer » devenu « Annuler »...) : le curseur passe à la première.
+  const panelRow =
+    panel && panelDef && panel.tabKey === tabKey && panel.itemId === current?.id
+      ? panelDef.rows.includes(panel.row)
+        ? panel.row
+        : panelDef.rows[0]
+      : undefined;
   const detail = view.detail(current?.id, panelRow);
   const hint = current && view.hint?.(current.id);
 

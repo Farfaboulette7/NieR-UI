@@ -1,37 +1,16 @@
-// Onglet « Catalogue » : les jeux du serveur RomM de FarfaLauncher, par console,
-// avec installation et page Steam créée automatiquement. Et l'entrée
+// Onglet « Farfa project » : les jeux du serveur RomM de FarfaLauncher, par console. A sur un
+// jeu ouvre sa page (gamePage.tsx : les onglets de la page de jeu du launcher). Et l'entrée
 // Système → FarfaLauncher (serveur, jeton, moteur, sauvegardes).
 // Même structure que les autres onglets (TabView) : NieRDeck dessine, ce module
 // fournit le contenu.
-import { Navigation } from "@decky/ui";
-import { toaster } from "@decky/api";
 import type { ReactNode } from "react";
-import { NierGameDetail, NierMeter, NierOptionList, type NierMenuItem, type NierOption } from "../nier-ui";
+import { NierGameDetail, NierMeter, NierOptionList, type NierMenuItem } from "../nier-ui";
 import { playSfx } from "../launcher/audio";
-import { getGame, launchGame } from "../launcher/steamLibrary";
 import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
 import { promptText } from "./prompt";
-import { shortcutGameId } from "./shortcuts";
-import {
-  chooseExecutable,
-  configure,
-  ensureShortcut,
-  imageUrl,
-  install,
-  loadConsoles,
-  loadDetails,
-  logout,
-  setOpenList,
-  syncSaves,
-  uninstall,
-  updateEngine,
-  type CatDetails,
-  type CatGame,
-  type catalogueState,
-} from "./store";
-
-declare const SteamClient: any;
+import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
+import { configure, imageUrl, loadConsoles, loadDetails, logout, setOpenGame, setOpenList, syncSaves, updateEngine, type CatGame, type catalogueState } from "./store";
 
 type CatState = ReturnType<typeof catalogueState>;
 
@@ -61,84 +40,11 @@ const listTitle = (cat: CatState, key: string) => {
   return id === -1 ? ct("recomps") : (cat.consoles?.find((c) => c.id === id)?.name ?? ct("games"));
 };
 
-const fullDetails = (cat: CatState, romId: number): CatDetails | undefined => {
-  const d = cat.details[romId];
-  return d && typeof d === "object" && "game" in d ? d : undefined;
-};
-
-function kindLabel(game: CatGame | undefined, d: CatDetails | undefined): string {
-  if (d) {
-    if (d.installWith === "recomp") return d.game?.pc ? ct("kindPc") : ct("kindRecomp");
-    if (d.installWith === "emulator") return ct("kindEmulator", { name: d.game?.emulator?.name ?? "" });
-    return ct("kindNone");
-  }
-  if (!game) return "…";
-  if (game.pc) return ct("kindPc");
-  if (game.recomp) return ct("kindRecomp");
-  if (game.emulator) return ct("kindEmulator", { name: game.emulator });
-  return "…";
-}
-
-const isInstalled = (cat: CatState, romId: number, game?: CatGame) => {
-  const d = fullDetails(cat, romId);
-  return d ? !!d.installed : !!game?.installed;
-};
-
-/** Actions d'un jeu, dans la zone de droite. */
-function gameRows(cat: CatState, romId: number, game?: CatGame): NierOption[] {
-  if (cat.progress[romId]) return [];
-  const d = fullDetails(cat, romId);
-  // Installation qui attend le choix de l'exécutable.
-  const pending: string[] = d?.installed && !d.installed.executable ? (d.installed.pendingCandidates ?? []) : [];
-  if (pending.length) return pending.map((exe) => ({ id: `exe:${exe}`, label: exe }));
-  if (isInstalled(cat, romId, game)) {
-    return [
-      { id: "play", label: ct("actionPlay") },
-      { id: "steam", label: ct("actionSteamPage") },
-      { id: "shortcut", label: ct("actionShortcut") },
-      { id: "uninstall", label: ct("actionUninstall") },
-    ];
-  }
-  if (d && !d.canInstall) return [];
-  return [{ id: "install", label: ct("actionInstall") }];
-}
-
-function playGame(cat: CatState, romId: number) {
-  const appid = cat.shortcuts[String(romId)];
-  if (!appid) {
-    // Page Steam pas encore créée (installé avant le plugin…) : créée, puis lancée.
-    void ensureShortcut(romId).then(() => cat.shortcuts[String(romId)] && playGame(cat, romId));
-    return;
-  }
-  const game = getGame(appid);
-  if (game) launchGame(game);
-  else {
-    try {
-      SteamClient.Apps.RunGame(shortcutGameId(appid), "", -1, 100);
-    } catch {
-      toaster.toast({ title: "NieRDeck", body: ct("playFailed") });
-    }
-  }
-}
-
-function gameAction(cat: CatState, romId: number, row: string) {
-  playSfx("confirm");
-  if (row === "install") void install(romId);
-  else if (row === "play") playGame(cat, romId);
-  else if (row === "steam") {
-    const appid = cat.shortcuts[String(romId)];
-    if (appid) Navigation.Navigate(`/library/app/${appid}`);
-  } else if (row === "shortcut") void ensureShortcut(romId, true);
-  else if (row === "uninstall") void uninstall(romId);
-  else if (row.startsWith("exe:")) void chooseExecutable(romId, row.slice(4));
-}
-
-function gameDetail(cat: CatState, romId: number, game: CatGame | undefined, row?: string): ReactNode {
+/** Aperçu d'un jeu dans la liste ; A ouvre sa page. */
+function gamePreview(cat: CatState, romId: number, game: CatGame | undefined): ReactNode {
   const d = fullDetails(cat, romId);
   const progress = cat.progress[romId];
-  const cover = d?.game?.coverUrl ?? game?.coverUrl;
-  const local = imageUrl(cover);
-  const rows = gameRows(cat, romId, game);
+  const local = imageUrl(d?.game?.coverUrl ?? game?.coverUrl);
   const status = progress ? ct("statusInstalling") : isInstalled(cat, romId, game) ? ct("statusInstalled") : ct("statusNotInstalled");
   const failed = cat.details[romId];
   const error = failed && typeof failed === "object" && "error" in failed ? failed.error : undefined;
@@ -149,16 +55,13 @@ function gameDetail(cat: CatState, romId: number, game: CatGame | undefined, row
         imageAlt={game?.name ?? d?.game?.name}
         compact
         actions={
-          <>
-            {progress && (
-              <NierMeter
-                label={ct(`phase_${progress.phase}` as CatKey) ?? progress.phase}
-                value={progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}
-                mutedLabel="…"
-              />
-            )}
-            {rows.length > 0 && <NierOptionList options={rows} selectedId={row} />}
-          </>
+          progress && (
+            <NierMeter
+              label={ct(`phase_${progress.phase}` as CatKey) ?? progress.phase}
+              value={progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}
+              mutedLabel="…"
+            />
+          )
         }
         fields={[
           { label: ct("console"), value: d?.game?.console || game?.console || "—" },
@@ -177,11 +80,14 @@ function gameDetail(cat: CatState, romId: number, game: CatGame | undefined, row
 export function catalogueView(cat: CatState): TabView {
   if (!cat.consoles) setTimeout(() => void loadConsoles(), 0);
   const open = cat.openList;
+  if (open && cat.openGame != null) {
+    const game = cat.lists[open]?.games.find((g) => g.id === cat.openGame);
+    return gamePageView(cat, cat.openGame, game);
+  }
   if (open) {
     const list = cat.lists[open];
     const games = list?.games ?? [];
     const find = (id?: string) => games.find((g) => `g:${g.id}` === id);
-    const romOf = (id?: string) => (id ? Number(id.slice(2)) : NaN);
     return {
       menuTitle: `${listTitle(cat, open)}${games.length ? ` · ${games.length}` : ""}`,
       items: games.map(
@@ -192,23 +98,22 @@ export function catalogueView(cat: CatState): TabView {
           muted: !g.installed && !cat.progress[g.id],
         }),
       ),
-      detail: (id, row) => {
+      detail: (id) => {
         const game = find(id);
         if (!game) {
           const msg = list?.loading ? ct("loading") : list?.error ? ct("error", { error: list.error }) : ct("empty");
           return { title: listTitle(cat, open), content: <NierGameDetail art={false} description={msg} /> };
         }
         wantDetails(cat, game.id);
-        return { title: game.name, content: gameDetail(cat, game.id, game, row) };
+        return { title: game.name, content: gamePreview(cat, game.id, game) };
       },
-      activate: () => {},
-      panel: (id) => {
-        const romId = romOf(id);
-        const rows = gameRows(cat, romId, find(id));
-        if (!rows.length) return undefined;
-        return { rows: rows.map((r) => r.id), activate: (row) => gameAction(cat, romId, row) } satisfies PanelDef;
+      activate: (id) => {
+        const game = find(id);
+        if (!game) return;
+        playSfx("confirm");
+        setOpenGame(game.id);
       },
-      hint: (id) => (gameRows(cat, romOf(id), find(id)).length ? ct("actions") : undefined),
+      hint: (id) => (find(id) ? ct("openGame") : undefined),
       back: () => {
         playSfx("back");
         setOpenList(null);
