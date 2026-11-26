@@ -25,6 +25,8 @@ LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique"}
 WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer"}
 TIMEOUT = 180
+# Longueur maximale d'une ligne JSON du moteur (une fiche de jeu PC peut peser plusieurs Mo).
+LINE_LIMIT = 64 * 1024 * 1024
 
 
 def cli_path() -> str:
@@ -60,6 +62,9 @@ async def run(args: list, stdin: str | None = None, on_line=None, timeout: float
             stderr=asyncio.subprocess.DEVNULL,
             env=_env(),
             cwd=decky.DECKY_USER_HOME,
+            # Une fiche de jeu PC liste tous ses fichiers sur une seule ligne (94 Ko pour
+            # NieR:Automata) : la limite par défaut de 64 Ko la faisait échouer.
+            limit=LINE_LIMIT,
         )
     except Exception as e:
         decky.logger.error(f"FarfaLauncherDeck impossible à lancer : {e}")

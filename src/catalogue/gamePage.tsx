@@ -6,9 +6,10 @@ import { toaster } from "@decky/api";
 import type { ReactNode } from "react";
 import { NierGameDetail, NierMeter, NierOptionList, type NierField, type NierMenuItem, type NierOption } from "../nier-ui";
 import { playSfx } from "../launcher/audio";
-import { getGame, launchGame } from "../launcher/steamLibrary";
+import { formatLastPlayed, getGame, launchGame } from "../launcher/steamLibrary";
 import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
+import { t } from "../launcher/i18n";
 import { shortcutGameId } from "./shortcuts";
 import {
   cancelInstall,
@@ -145,36 +146,44 @@ function playGame(cat: CatState, romId: number) {
   }
 }
 
-function actionRows(cat: CatState, romId: number): NierOption[] {
-  const p = cat.progress[romId];
-  if (p) return p.phase === "cancel" ? [] : [{ id: "cancel", label: ct("actionCancel") }];
+/** Exécutables proposés quand l'installation attend ce choix. */
+function pendingExes(cat: CatState, romId: number): string[] {
   const d = fullDetails(cat, romId);
-  // Installation qui attend le choix de l'exécutable.
-  const pending: string[] = d?.installed && !d.installed.executable ? (d.installed.pendingCandidates ?? []) : [];
-  if (pending.length) return pending.map((exe) => ({ id: `exe:${exe}`, label: exe }));
-  if (isInstalled(cat, romId)) {
-    return [
-      { id: "play", label: ct("actionPlay") },
-      { id: "steam", label: ct("actionSteamPage") },
-      { id: "shortcut", label: ct("actionShortcut") },
-      { id: "uninstall", label: ct("actionUninstall") },
-    ];
-  }
-  if (d && !d.canInstall) return [];
-  return [{ id: "install", label: ct("actionInstall") }];
+  return d?.installed && !d.installed.executable ? (d.installed.pendingCandidates ?? []) : [];
 }
 
-function doAction(cat: CatState, romId: number, row: string) {
+/** Libellé de la première entrée du menu, comme « Jouer » / « Installer » sur la page Steam. */
+function playLabel(cat: CatState, romId: number, game?: CatGame): string {
+  if (cat.progress[romId]) return ct("actionCancel");
+  if (pendingExes(cat, romId).length) return ct("actionChooseExe");
+  return isInstalled(cat, romId, game) ? ct("actionPlay") : ct("actionInstall");
+}
+
+/** A sur la première entrée : agit tout de suite, comme sur la page Steam. */
+function playActivate(cat: CatState, romId: number, game?: CatGame) {
+  const p = cat.progress[romId];
+  if (p) {
+    if (p.phase === "cancel") return;
+    playSfx("confirm");
+    return void cancelInstall(romId);
+  }
+  if (isInstalled(cat, romId, game)) {
+    playSfx("launch");
+    return playGame(cat, romId);
+  }
+  const d = fullDetails(cat, romId);
+  if (d && !d.canInstall) return playSfx("unfocus");
   playSfx("confirm");
-  if (row === "cancel") void cancelInstall(romId);
-  else if (row === "install") void install(romId);
-  else if (row === "play") playGame(cat, romId);
-  else if (row === "steam") {
-    const appid = cat.shortcuts[String(romId)];
-    if (appid) Navigation.Navigate(`/library/app/${appid}`);
-  } else if (row === "shortcut") void ensureShortcut(romId, true);
-  else if (row === "uninstall") void uninstall(romId);
-  else if (row.startsWith("exe:")) void chooseExecutable(romId, row.slice(4));
+  void install(romId);
+}
+
+function openSteamPage(cat: CatState, romId: number) {
+  const appid = cat.shortcuts[String(romId)];
+  if (appid) return Navigation.Navigate(`/library/app/${appid}`);
+  void ensureShortcut(romId).then(() => {
+    const id = cat.shortcuts[String(romId)];
+    if (id) Navigation.Navigate(`/library/app/${id}`);
+  });
 }
 
 function progressMeter(cat: CatState, romId: number) {
@@ -331,22 +340,24 @@ function savesDetail(cat: CatState, romId: number, row?: string): ReactNode {
 
 // ───────────── La page ─────────────
 
-type PageItem = "actions" | "info" | "install" | "language" | "saves" | "news" | "media" | "ranking";
+type PageItem = "play" | "info" | "install" | "language" | "saves" | "news" | "media" | "ranking" | "steam" | "uninstall";
 
-function pageItems(cat: CatState, romId: number): PageItem[] {
+/** Entrées du menu du jeu, dans l'ordre de la page Steam : l'action d'abord, la page Steam à la fin. */
+function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
   const d = fullDetails(cat, romId);
   const sheet = cat.sheets[romId];
-  const items: PageItem[] = ["actions", "info", "install"];
+  const installed = isInstalled(cat, romId, game);
+  const items: PageItem[] = ["play", "info", "install"];
   if (cat.languages[romId]?.language) items.push("language");
   if (d?.installed?.executable) items.push("saves");
   if (typeof sheet === "object" && sheet.changelog) items.push("news");
   if (d?.game?.screenshotUrls?.length) items.push("media");
   items.push("ranking");
+  if (installed && !cat.progress[romId]) items.push("steam", "uninstall");
   return items;
 }
 
-const ITEM_LABEL: Record<PageItem, CatKey> = {
-  actions: "pageActions",
+const ITEM_LABEL: Record<Exclude<PageItem, "play">, CatKey> = {
   info: "pageInfo",
   install: "pageInstall",
   language: "pageLanguage",
@@ -354,13 +365,19 @@ const ITEM_LABEL: Record<PageItem, CatKey> = {
   news: "pageNews",
   media: "pageMedia",
   ranking: "pageRanking",
+  steam: "actionSteamPage",
+  uninstall: "actionUninstall",
 };
 
-function rowsOf(cat: CatState, romId: number, item: PageItem): NierOption[] {
+const itemLabel = (cat: CatState, romId: number, game: CatGame | undefined, item: PageItem) =>
+  item === "play" ? playLabel(cat, romId, game) : ct(ITEM_LABEL[item]);
+
+function rowsOf(cat: CatState, romId: number, game: CatGame | undefined, item: PageItem): NierOption[] {
   const d = fullDetails(cat, romId);
   switch (item) {
-    case "actions":
-      return actionRows(cat, romId);
+    case "play":
+      // Seul cas où « Jouer » ouvre une liste : l'installation attend le choix de l'exécutable.
+      return cat.progress[romId] ? [] : pendingExes(cat, romId).map((exe) => ({ id: `exe:${exe}`, label: exe }));
     case "install":
       return installRows(cat, romId);
     case "language":
@@ -369,6 +386,13 @@ function rowsOf(cat: CatState, romId: number, item: PageItem): NierOption[] {
       return savesRows(cat, romId);
     case "media":
       return (d?.game?.screenshotUrls ?? []).map((_: string, i: number) => ({ id: `shot:${i}`, label: ct("shotN", { n: i + 1 }) }));
+    case "steam":
+      return [
+        { id: "steam:open", label: ct("actionOpenSteamPage") },
+        { id: "steam:shortcut", label: ct("actionShortcut") },
+      ];
+    case "uninstall":
+      return [{ id: "uninstall:yes", label: ct("uninstallConfirm", { name: d?.game?.name ?? game?.name ?? "" }) }];
     default:
       return [];
   }
@@ -376,7 +400,10 @@ function rowsOf(cat: CatState, romId: number, item: PageItem): NierOption[] {
 
 function activateRow(cat: CatState, romId: number, item: PageItem, row: string) {
   const d = fullDetails(cat, romId);
-  if (item === "actions") return doAction(cat, romId, row);
+  if (item === "play" && row.startsWith("exe:")) {
+    playSfx("confirm");
+    return void chooseExecutable(romId, row.slice(4));
+  }
   if (item === "install") {
     const o = offersOf(d).find((x) => offerRow(x) === row);
     const action = o && offerAction(cat, romId, d, o);
@@ -393,6 +420,25 @@ function activateRow(cat: CatState, romId: number, item: PageItem, row: string) 
     if (row === "sync") return void syncGame(romId);
     if (row.startsWith("restore:")) return void pickVersion(romId, row.slice(8));
   }
+  if (item === "steam") {
+    playSfx("confirm");
+    if (row === "steam:open") return openSteamPage(cat, romId);
+    if (row === "steam:shortcut") return void ensureShortcut(romId, true);
+  }
+  if (item === "uninstall" && row === "uninstall:yes") {
+    playSfx("confirm");
+    return void uninstall(romId);
+  }
+}
+
+/** Images de la page, comme sur la page Steam : la bannière du raccourci, puis les captures, puis la jaquette. */
+function heroImages(cat: CatState, romId: number, game?: CatGame): string[] {
+  const d = fullDetails(cat, romId);
+  const appid = cat.shortcuts[String(romId)];
+  const steam = appid ? getGame(appid) : null;
+  const shots: string[] = (d?.game?.screenshotUrls ?? []).map((u: string) => imageUrl(u)).filter(Boolean);
+  const cover = imageUrl(d?.game?.coverUrl ?? game?.coverUrl);
+  return [...(steam ? steam.heroes.concat(steam.banners) : []), ...shots, ...(cover ? [cover] : [])];
 }
 
 function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, item: PageItem, row?: string): ReactNode {
@@ -402,28 +448,38 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
   const sh = typeof sheet === "object" ? sheet : null;
   const failed = cat.details[romId];
   const error = failed && typeof failed === "object" && "error" in failed ? failed.error : undefined;
-  if (error) return <NierGameDetail art={false} description={ct("error", { error })} />;
+  if (error) return <NierGameDetail image={heroImages(cat, romId, game)} description={ct("error", { error })} />;
   const cover = imageUrl(g?.coverUrl ?? game?.coverUrl);
+  const playtime =
+    sheet === "loading" || (!sh && !d) ? "…" : !sh || sh.playtimeMs == null ? ct("unavailable") : sh.playtimeMs === 0 ? ct("neverPlayed") : formatPlaytime(sh.playtimeMs);
   switch (item) {
-    case "actions": {
-      const rows = actionRows(cat, romId);
+    case "play": {
+      // Même contenu que la page Steam : bannière, temps de jeu, dernière session, statut.
+      const appid = cat.shortcuts[String(romId)];
+      const steam = appid ? getGame(appid) : null;
       const status = cat.progress[romId] ? ct("statusInstalling") : isInstalled(cat, romId, game) ? ct("statusInstalled") : ct("statusNotInstalled");
+      const exes = rowsOf(cat, romId, game, "play");
+      const fields: NierField[] = [
+        { label: ct("fPlaytime"), value: playtime },
+        { label: ct("lastSession"), value: steam ? formatLastPlayed(steam.lastPlayed) : "—" },
+        { label: ct("kind"), value: kindLabel(game, d) },
+        { label: ct("status"), value: status },
+      ];
       return (
-        <NierGameDetail
-          image={cover}
-          imageAlt={g?.name ?? game?.name}
-          compact
-          actions={
-            <>
-              {progressMeter(cat, romId)}
-              {rows.length > 0 && <NierOptionList options={rows} selectedId={row} />}
-            </>
-          }
-          fields={[
-            { label: ct("kind"), value: kindLabel(game, d) },
-            { label: ct("status"), value: status },
-          ]}
-        />
+        <div>
+          <NierGameDetail
+            image={heroImages(cat, romId, game)}
+            imageAlt={g?.name ?? game?.name}
+            actions={
+              <>
+                {progressMeter(cat, romId)}
+                {exes.length > 0 && <NierOptionList options={exes} selectedId={row} />}
+              </>
+            }
+            fields={fields}
+          />
+          {exes.length > 0 && <Text>{ct("chooseExeDesc")}</Text>}
+        </div>
       );
     }
     case "info": {
@@ -432,15 +488,12 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
       if (year) fields.push({ label: ct("fRelease"), value: String(year) });
       if (g?.developers?.length) fields.push({ label: ct("fDev"), value: g.developers.join(", ") });
       if (g?.genres?.length) fields.push({ label: ct("fGenres"), value: g.genres.join(", ") });
-      fields.push({
-        label: ct("fPlaytime"),
-        value: sheet === "loading" || (!sh && !d) ? "…" : !sh || sh.playtimeMs == null ? ct("unavailable") : sh.playtimeMs === 0 ? ct("neverPlayed") : formatPlaytime(sh.playtimeMs),
-      });
       fields.push({ label: ct("kind"), value: kindLabel(game, d) });
       if (sh?.rommPage) fields.push({ label: ct("fSources"), value: `${ct("rommPage")} · ${sh.rommPage}` });
+      const images = [...(g?.screenshotUrls ?? []).map((u: string) => imageUrl(u)), cover].filter(Boolean) as string[];
       return (
         <div>
-          <NierGameDetail image={cover} imageAlt={g?.name ?? game?.name} compact fields={fields} />
+          <NierGameDetail image={images} imageAlt={g?.name ?? game?.name} fields={fields} />
           {g?.summary && <Text>{g.summary}</Text>}
         </div>
       );
@@ -475,7 +528,7 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
         <NierGameDetail
           image={imageUrl(shots[i] ?? shots[0])}
           imageAlt={g?.name}
-          actions={<NierOptionList options={rowsOf(cat, romId, "media")} selectedId={row} />}
+          actions={<NierOptionList options={rowsOf(cat, romId, game, "media")} selectedId={row} />}
         />
       );
     }
@@ -490,41 +543,79 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
         </div>
       );
     }
+    case "steam":
+      return (
+        <NierGameDetail
+          image={heroImages(cat, romId, game)}
+          actions={<NierOptionList options={rowsOf(cat, romId, game, "steam")} selectedId={row} />}
+          description={ct("steamPageDesc")}
+        />
+      );
+    case "uninstall":
+      return (
+        <NierGameDetail
+          image={heroImages(cat, romId, game)}
+          actions={<NierOptionList options={rowsOf(cat, romId, game, "uninstall")} selectedId={row} />}
+          description={ct("uninstallDesc")}
+        />
+      );
   }
 }
 
-/** Page d'un jeu : ses onglets à gauche, leur contenu à droite. */
+/**
+ * Page d'un jeu, présentée comme la page d'un jeu Steam (GamePanel) : glissée par-dessus
+ * le launcher, « Menu du jeu » à gauche, l'action (Jouer / Installer) en première entrée.
+ */
 export function gamePageView(cat: CatState, romId: number, game: CatGame | undefined): TabView {
   if (!cat.details[romId]) setTimeout(() => void loadDetails(romId), 0);
   const d = fullDetails(cat, romId);
   const name = d?.game?.name ?? game?.name ?? `#${romId}`;
-  const items = pageItems(cat, romId);
-  const asItem = (id?: string) => (items.includes(id as PageItem) ? (id as PageItem) : "actions");
+  const items = pageItems(cat, romId, game);
+  const asItem = (id?: string) => (items.includes(id as PageItem) ? (id as PageItem) : "play");
   return {
-    menuTitle: name,
+    title: name,
+    menuTitle: t("gameMenu"),
     items: items.map(
       (i): NierMenuItem => ({
         id: i,
-        label: ct(ITEM_LABEL[i]),
-        badge: i === "actions" && cat.progress[romId] ? "↓" : undefined,
+        label: itemLabel(cat, romId, game, i),
+        badge: i === "play" && cat.progress[romId] ? "↓" : undefined,
       }),
     ),
-    detail: (id, row) => ({ title: `${name} · ${ct(ITEM_LABEL[asItem(id)])}`, content: pageDetail(cat, romId, game, asItem(id), row) }),
-    activate: () => {},
+    detail: (id, row) => {
+      const item = asItem(id);
+      return { title: item === "play" ? name : itemLabel(cat, romId, game, item), content: pageDetail(cat, romId, game, item, row) };
+    },
+    activate: (id) => {
+      if (asItem(id) === "play") playActivate(cat, romId, game);
+    },
     panel: (id) => {
       const item = asItem(id);
-      const rows = rowsOf(cat, romId, item);
+      const rows = rowsOf(cat, romId, game, item);
       if (!rows.length) return undefined;
       // Installation : le curseur arrive sur ce que « Jouer » lance (ou ce qui est conseillé).
-      const initial = item === "install" ? (() => {
-        const o = defaultOffer(d, offersOf(d));
-        return o ? offerRow(o) : undefined;
-      })() : undefined;
+      const initial =
+        item === "install"
+          ? (() => {
+              const o = defaultOffer(d, offersOf(d));
+              return o ? offerRow(o) : undefined;
+            })()
+          : undefined;
       return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row) } satisfies PanelDef;
     },
-    hint: (id) => (rowsOf(cat, romId, asItem(id)).length ? ct("choose") : undefined),
+    hint: (id) => {
+      const item = asItem(id);
+      if (item === "play") {
+        const p = cat.progress[romId];
+        if (p) return p.phase === "cancel" ? undefined : ct("hintCancel");
+        if (pendingExes(cat, romId).length) return ct("choose");
+        return isInstalled(cat, romId, game) ? ct("hintLaunch") : ct("actionInstall");
+      }
+      if (!rowsOf(cat, romId, game, item).length) return undefined;
+      return item === "steam" ? ct("hintOpen") : ct("choose");
+    },
     back: () => {
-      playSfx("back");
+      playSfx("close");
       setOpenGame(null);
       return true;
     },

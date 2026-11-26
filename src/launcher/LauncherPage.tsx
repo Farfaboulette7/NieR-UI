@@ -12,9 +12,9 @@ import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
 import type { TabView } from "./tabView";
-import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueView } from "../catalogue/CatalogueTab";
+import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueGameView, catalogueView } from "../catalogue/CatalogueTab";
 import { ct } from "../catalogue/i18n";
-import { catalogueReady, useCatalogue } from "../catalogue/store";
+import { catalogueReady, setOpenGame, useCatalogue } from "../catalogue/store";
 import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
 import {
   formatLastPlayed,
@@ -111,8 +111,24 @@ export function LauncherPage() {
   const catReady = catalogueReady();
   const tabs = TABS.map((x) => ({ id: x.id, label: t(x.label) }));
   if (catReady) tabs.splice(3, 0, { id: "catalogue", label: ct("tab") });
-  const tabKey =
-    tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}${cat.openGame != null ? `:${cat.openGame}` : ""}` : tabId;
+  // Page d'un jeu Farfa project : glissée par-dessus la liste, comme la page d'un jeu Steam.
+  const catGame = tabId === "catalogue" && catReady ? catalogueGameView(cat) : null;
+  const baseKey = tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
+  const tabKey = catGame ? `${baseKey}:${cat.openGame}` : baseKey;
+  // Fermeture animée de la page du jeu Farfa project (elle repart vers la droite).
+  const [catClosing, setCatClosing] = useState(false);
+  // Page laissée ouverte avant le lancement d'un jeu : réaffichée sans animation.
+  const catInstantFor = useRef(cat.openGame);
+  const closeCatGame = () => {
+    catInstantFor.current = null;
+    setCatClosing(false);
+    setOpenGame(null);
+  };
+  useEffect(() => {
+    if (!catClosing) return;
+    const t = setTimeout(closeCatGame, 600);
+    return () => clearTimeout(t);
+  }, [catClosing]);
   const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
   const setItemId = (id: string | undefined) => setItems((remembered.items = { ...remembered.items, [tabKey]: id }));
   const setCollectionId = (id: string | undefined) => setCollectionIdState((remembered.collectionId = id));
@@ -183,6 +199,10 @@ export function LauncherPage() {
   } else {
     view = systemView(settings, updates, media, nowPlaying, sfxSetup, steamSystem, storage, cat);
   }
+  // Sous la page du jeu Farfa project, la liste reste affichée telle quelle.
+  const listView = view;
+  const listCurrent = listView.items.find((i) => i.id === items[baseKey]) ?? listView.items[0];
+  if (catGame) view = catGame;
 
   const current = view.items.find((i) => i.id === items[tabKey]) ?? view.items[0];
   const panelDef = current ? view.panel?.(current.id) : undefined;
@@ -244,6 +264,7 @@ export function LauncherPage() {
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
     if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
+    if (catGame && catClosing) return true;
     if (panelRow !== undefined && onPanelAction(action, repeat)) return true;
     // → entre dans le panneau, sauf sur un item réglable (volume) où il sert à régler.
     if (current && panelDef?.rows.length && (action === "confirm" || (action === "right" && !view.adjustable?.(current.id)))) {
@@ -265,6 +286,8 @@ export function LauncherPage() {
         return true;
       case "prevTab":
       case "nextTab": {
+        // Page d'un jeu : pas d'onglets, comme sur la page d'un jeu Steam.
+        if (catGame) return true;
         const t = tabs.findIndex((x) => x.id === tabId);
         playSfx("tab");
         setTabId(tabs[stepIndex(t, action === "prevTab" ? -1 : 1, tabs.length, true)].id);
@@ -274,6 +297,12 @@ export function LauncherPage() {
         if (current) view.activate(current.id);
         return true;
       case "back":
+        if (catGame) {
+          // La page du jeu repart vers la droite, puis se ferme.
+          playSfx("close");
+          setCatClosing(true);
+          return true;
+        }
         return view.back?.() ?? false; // sur l'accueil, Steam garde la main
       case "left":
       case "right":
@@ -284,6 +313,25 @@ export function LauncherPage() {
     }
   };
 
+  const musicFooter = (
+    <>
+      <NierHint button="STEAM" label={t("menu")} />
+      <NierHint button="QAM" label={t("quickAccess")} />
+      <MusicFooter onClick={showMusic} />
+    </>
+  );
+  const panelFooter = (
+    <>
+      <NierHint button="UPDOWN" label={t("choose")} />
+      {panelRow !== undefined && panelDef?.adjustable?.(panelRow) ? <NierHint button="LEFTRIGHT" label={t("adjust")} /> : <NierHint button="A" label={t("confirm")} />}
+      <NierHint button="B" label={t("back")} />
+    </>
+  );
+  // Sous la page d'un jeu Farfa project : la liste, sans curseur dans la zone de droite.
+  const listDetail = catGame ? listView.detail(listCurrent?.id) : detail;
+  const listHint = catGame ? listCurrent && listView.hint?.(listCurrent.id) : hint;
+  const listPanelRow = catGame ? undefined : panelRow;
+
   return (
     // Plein écran, sous les autres pages Steam (z-index bas).
     <NierScreen zIndex={1} onAction={onAction}>
@@ -292,40 +340,59 @@ export function LauncherPage() {
         activeTabId={tabId}
         onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
-        menuTitle={view.menuTitle}
-        menuItems={view.items}
-        activeItemId={current?.id}
-        onItemSelect={setItemId}
-        onItemActivate={view.activate}
-        detailTitle={detail.title}
-        detailFocused={panelRow !== undefined}
-        footerStart={
-          <>
-            <NierHint button="STEAM" label={t("menu")} />
-            <NierHint button="QAM" label={t("quickAccess")} />
-            <MusicFooter onClick={showMusic} />
-          </>
-        }
+        menuTitle={listView.menuTitle}
+        menuItems={listView.items}
+        activeItemId={listCurrent?.id}
+        onItemSelect={catGame ? () => {} : setItemId}
+        onItemActivate={catGame ? undefined : listView.activate}
+        detailTitle={listDetail.title}
+        detailFocused={listPanelRow !== undefined}
+        footerStart={musicFooter}
         footer={
-          panelRow !== undefined ? (
-            <>
-              <NierHint button="UPDOWN" label={t("choose")} />
-              {panelDef?.adjustable?.(panelRow) ? <NierHint button="LEFTRIGHT" label={t("adjust")} /> : <NierHint button="A" label={t("confirm")} />}
-              <NierHint button="B" label={t("back")} />
-            </>
+          listPanelRow !== undefined ? (
+            panelFooter
           ) : (
             <>
               <NierHint button={["L1", "R1"]} label={t("tabs")} />
-              {current && view.adjustable?.(current.id) && <NierHint button="LEFTRIGHT" label={t("adjust")} />}
-              {hint && <NierHint button="A" label={hint} />}
-              {view.back && <NierHint button="B" label={t("back")} />}
+              {listCurrent && listView.adjustable?.(listCurrent.id) && <NierHint button="LEFTRIGHT" label={t("adjust")} />}
+              {listHint && <NierHint button="A" label={listHint} />}
+              {listView.back && <NierHint button="B" label={t("back")} />}
             </>
           )
         }
       >
-        {detail.content}
+        {listDetail.content}
       </NierLayout>
       {intro !== null && <NierIntro key={intro} onDone={() => setIntro(null)} />}
+      {catGame && (
+        // Même présentation que la page d'un jeu Steam (GamePanel) : nom du jeu en titre, pas d'onglets.
+        <NierSlideOver key={cat.openGame} closing={catClosing} instant={catInstantFor.current === cat.openGame} onClosed={closeCatGame}>
+          <NierLayout
+            title={catGame.title}
+            status={<NierStatus time={time} battery={battery} />}
+            menuTitle={catGame.menuTitle}
+            menuItems={catGame.items}
+            activeItemId={current?.id}
+            onItemSelect={setItemId}
+            onItemActivate={catGame.activate}
+            detailTitle={detail.title}
+            detailFocused={panelRow !== undefined}
+            footerStart={musicFooter}
+            footer={
+              panelRow !== undefined ? (
+                panelFooter
+              ) : (
+                <>
+                  {hint && <NierHint button="A" label={hint} />}
+                  <NierHint button="B" label={t("back")} />
+                </>
+              )
+            }
+          >
+            {detail.content}
+          </NierLayout>
+        </NierSlideOver>
+      )}
       {overlay && (
         <NierSlideOver closing={overlay.closing} instant={overlay.instant} onClosed={() => setOverlay(null)}>
           <GamePanel

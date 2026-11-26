@@ -76,14 +76,18 @@ function gamePreview(cat: CatState, romId: number, game: CatGame | undefined): R
   );
 }
 
-/** Onglet Catalogue : consoles, puis jeux de la console ouverte. */
+/** Page du jeu ouvert, glissée par-dessus la liste comme la page d'un jeu Steam ; null sinon. */
+export function catalogueGameView(cat: CatState): TabView | null {
+  const open = cat.openList;
+  if (!open || cat.openGame == null) return null;
+  const game = cat.lists[open]?.games.find((g) => g.id === cat.openGame);
+  return gamePageView(cat, cat.openGame, game);
+}
+
+/** Onglet Catalogue : consoles, puis jeux de la console ouverte (la page du jeu est à part). */
 export function catalogueView(cat: CatState): TabView {
   if (!cat.consoles) setTimeout(() => void loadConsoles(), 0);
   const open = cat.openList;
-  if (open && cat.openGame != null) {
-    const game = cat.lists[open]?.games.find((g) => g.id === cat.openGame);
-    return gamePageView(cat, cat.openGame, game);
-  }
   if (open) {
     const list = cat.lists[open];
     const games = list?.games ?? [];

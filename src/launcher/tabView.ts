@@ -13,6 +13,8 @@ export interface PanelDef {
 
 /** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
 export interface TabView {
+  /** Gros titre en haut à gauche (page d'un jeu : son nom) ; sinon « MENU ». */
+  title?: string;
   menuTitle: string;
   items: NierMenuItem[];
   /** Zone de droite pour l'item sélectionné (undefined si la liste est vide) ; `row` : ligne choisie dans son panneau. */
