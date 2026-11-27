@@ -12,9 +12,10 @@ import { launcherState } from "./launcherState";
 import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoot";
 import { NierScreen } from "./NierScreen";
 import type { TabView } from "./tabView";
+import { ManualReader, manualAction } from "../catalogue/ManualReader";
 import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueGameView, catalogueView } from "../catalogue/CatalogueTab";
 import { ct } from "../catalogue/i18n";
-import { catalogueReady, setOpenGame, useCatalogue } from "../catalogue/store";
+import { catalogueReady, manualState, setOpenGame, useCatalogue } from "../catalogue/store";
 import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
 import {
   formatLastPlayed,
@@ -27,7 +28,7 @@ import {
   type SteamGame,
 } from "./steamLibrary";
 import { getUpdateStatus, installUpdate, type UpdateStatus } from "./Updates";
-import { useBattery, useClock } from "./useSystemStatus";
+import { useBattery, useBluetooth, useClock, useWifi } from "./useSystemStatus";
 
 // Côté Decky : cette page possède l'état, les données et l'entrée manette ;
 // nier-ui ne fait que dessiner. Affichée à la place de l'accueil Steam.
@@ -70,6 +71,8 @@ declare const SteamClient: any;
 export function LauncherPage() {
   const time = useClock();
   const battery = useBattery();
+  const wifi = useWifi();
+  const bluetooth = useBluetooth();
   const library = useSteamLibrary();
   const [settings] = useSettings();
   // Clé de l'animation : la changer la rejoue depuis le début.
@@ -276,6 +279,8 @@ export function LauncherPage() {
   };
 
   const onAction = (action: NierAction, repeat: boolean): boolean => {
+    // Livret ouvert en plein écran : il prend toutes les commandes.
+    if (manualState()) return manualAction(action, repeat);
     if (overlay) return overlay.closing || (overlayAction.current?.(action, repeat) ?? true);
     if (catGame && catClosing) return true;
     if (panelRow !== undefined && onPanelAction(action, repeat)) return true;
@@ -364,13 +369,18 @@ export function LauncherPage() {
   );
   const panelFooter = (
     <>
-      <NierHint button="UPDOWN" label={t("choose")} />
-      {panelRow !== undefined && panelDef?.adjustable?.(panelRow) ? <NierHint button="LEFTRIGHT" label={t("adjust")} /> : <NierHint button="A" label={t("confirm")} />}
+      <NierHint button="UPDOWN" label={panelDef?.browseOnly ? t("browse") : t("choose")} />
+      {panelRow !== undefined && panelDef?.adjustable?.(panelRow) ? (
+        <NierHint button="LEFTRIGHT" label={t("adjust")} />
+      ) : panelDef?.browseOnly ? null : (
+        <NierHint button="A" label={t("confirm")} />
+      )}
       <NierHint button="B" label={t("back")} />
     </>
   );
   // Sous la page d'un jeu Farfa project : la liste, sans curseur dans la zone de droite.
   const listDetail = catGame ? listView.detail(listCurrent?.id) : detail;
+  const manual = manualState();
   const listHint = catGame ? listCurrent && listView.hint?.(listCurrent.id) : hint;
   const listPanelRow = catGame ? undefined : panelRow;
 
@@ -381,7 +391,7 @@ export function LauncherPage() {
         tabs={tabs}
         activeTabId={tabId}
         onTabChange={setTabId}
-        status={<NierStatus time={time} battery={battery} />}
+        status={<NierStatus time={time} battery={battery} wifi={wifi} bluetooth={bluetooth} />}
         menuTitle={listView.menuTitle}
         subTabs={
           tabId === "steam" ? { labels: [t("tabLibrary"), t("tabCollections")], active: STEAM_SUBS.indexOf(steamSub) } : view.sub ? { labels: view.sub.labels, active: view.sub.active } : undefined
@@ -417,7 +427,7 @@ export function LauncherPage() {
         <NierSlideOver key={cat.openGame} closing={catClosing} instant={catInstantFor.current === cat.openGame} onClosed={closeCatGame}>
           <NierLayout
             title={catGame.title}
-            status={<NierStatus time={time} battery={battery} />}
+            status={<NierStatus time={time} battery={battery} wifi={wifi} bluetooth={bluetooth} />}
             menuTitle={catGame.menuTitle}
             menuItems={catGame.items}
             activeItemId={current?.id}
@@ -442,6 +452,7 @@ export function LauncherPage() {
           </NierLayout>
         </NierSlideOver>
       )}
+      {manual && <ManualReader view={manual} status={<NierStatus time={time} battery={battery} wifi={wifi} bluetooth={bluetooth} />} footerStart={musicFooter} />}
       {overlay && (
         <NierSlideOver closing={overlay.closing} instant={overlay.instant} onClosed={() => setOverlay(null)}>
           <GamePanel

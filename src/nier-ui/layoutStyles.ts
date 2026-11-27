@@ -22,6 +22,8 @@ export const NIER_LAYOUT_CSS = `
   overflow: hidden;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* Une colonne bornée à l'écran : un long titre ne peut pas élargir la page. */
+  grid-template-columns: minmax(0, 1fr);
   background-color: var(--nier-bg);
   background-image:
     linear-gradient(to right, var(--nier-grid-line) 1px, transparent 1px),
@@ -63,6 +65,7 @@ export const NIER_LAYOUT_CSS = `
 
 /* ---------- En-tête : titre + onglets ---------- */
 .nier-header {
+  min-width: 0;
   display: flex;
   align-items: flex-end;
   gap: 40px;
@@ -87,6 +90,17 @@ export const NIER_LAYOUT_CSS = `
   text-transform: uppercase;
   letter-spacing: var(--nier-tracking-title);
   text-shadow: 4px 4px 0 var(--nier-shadow);
+}
+/* Titre long (nom de jeu) : plus petit, puis coupé, pour laisser la place à la barre d'état. */
+.nier-title[data-length="long"] {
+  font-size: 32px;
+  letter-spacing: 0.12em;
+  line-height: 40px; /* même hauteur d'en-tête qu'un titre court */
+}
+.nier-title[data-length="very-long"] {
+  font-size: 26px;
+  letter-spacing: 0.08em;
+  line-height: 40px; /* même hauteur d'en-tête qu'un titre court */
 }
 .nier-tabs {
   display: flex;
@@ -309,6 +323,9 @@ export const NIER_LAYOUT_CSS = `
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 24px;
+  min-width: 0;
+  white-space: nowrap;
   margin: 0 var(--nier-gutter);
   padding: 10px 0 16px;
   font-size: 16px;
@@ -317,8 +334,21 @@ export const NIER_LAYOUT_CSS = `
 .nier-footer-group {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 28px;
 }
+/* Trop d'aides pour la largeur : on resserre par paliers (posé par NierLayout),
+   la hauteur du pied ne change jamais. */
+.nier-footer[data-compact="1"] .nier-footer-group { gap: 18px; }
+.nier-footer[data-compact="2"] .nier-footer-group { gap: 12px; }
+.nier-footer[data-compact="2"] { font-size: 14px; }
+.nier-footer[data-compact="2"] .nier-hint { gap: 6px; }
+.nier-footer[data-compact="3"] .nier-footer-group { gap: 12px; }
+.nier-footer[data-compact="3"] { font-size: 14px; }
+.nier-footer[data-compact="3"] .nier-hint { gap: 6px; }
+/* Dernier palier : les aides de Steam (Menu, Accès rapide) ne gardent que leur touche. */
+.nier-footer[data-compact="3"] .nier-footer-group:first-child .nier-hint-label { display: none; }
+.nier-footer[data-compact="3"] .nier-now-playing-info { width: 160px; }
 
 /* ---------- Animations ---------- */
 @keyframes nier-cursor {

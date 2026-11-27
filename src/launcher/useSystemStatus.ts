@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { NierBattery } from "../nier-ui";
+import { callable } from "@decky/api";
+import type { NierBattery, NierBluetooth, NierWifi } from "../nier-ui";
 
 declare const SteamClient: any;
 
@@ -45,4 +46,77 @@ export function useBattery(): NierBattery | null {
     };
   }, []);
   return battery;
+}
+
+/**
+ * Wi-Fi lu dans le magasin réseau de Steam (SystemNetworkStore). Seule la force du point
+ * d'accès actif est lue. null sans carte Wi-Fi (ou API absente).
+ */
+function readWifi(): NierWifi | null {
+  try {
+    const store = (window as any).SystemNetworkStore;
+    if (!store?.hasWirelessDevice) return null;
+    if (!store.isWifiEnabled) return { state: "off" };
+    const aps: any[] = store.wirelessNetworkDevice?.wireless?.aps ?? [];
+    const active = aps.find((ap) => ap?.is_active);
+    if (!active) return { state: "disconnected" };
+    // estrength : 1 (faible) à 4 (excellent) ; 1 = le point seul.
+    const bars = Math.max(0, Math.min(3, Number(active.estrength) - 1)) as 0 | 1 | 2 | 3;
+    return { state: "connected", bars };
+  } catch {
+    return null;
+  }
+}
+
+const sameWifi = (a: NierWifi | null, b: NierWifi | null) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Wi-Fi, relu toutes les 5 s (le magasin de Steam n'a pas d'abonnement simple). */
+export function useWifi(): NierWifi | null {
+  const [wifi, setWifi] = useState<NierWifi | null>(readWifi);
+  useEffect(() => {
+    const timer = setInterval(() => setWifi((old) => (sameWifi(old, readWifi()) ? old : readWifi())), 5000);
+    return () => clearInterval(timer);
+  }, []);
+  return wifi;
+}
+
+const getBluetooth = callable<[], "absent" | NierBluetooth>("get_bluetooth");
+
+/** Interrupteur Bluetooth de Steam (réglage client, voir steamSystem.ts) ; null si illisible. */
+function bluetoothSwitch(): boolean | null {
+  try {
+    const v = (window as any).settingsStore?.clientSettings?.system_bluetooth_enabled;
+    return typeof v === "boolean" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bluetooth : l'interrupteur de Steam (relu toutes les 3 s), et un appareil connecté ou non,
+ * lu dans BlueZ par le backend toutes les 15 s. null sans Bluetooth.
+ */
+export function useBluetooth(): NierBluetooth | null {
+  const [bluez, setBluez] = useState<NierBluetooth | "absent" | null>(null);
+  const [on, setOn] = useState(bluetoothSwitch);
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      getBluetooth()
+        .then((s) => alive && setBluez(s))
+        .catch(() => alive && setBluez(null));
+    void read();
+    const slow = setInterval(read, 15_000);
+    const fast = setInterval(() => setOn(bluetoothSwitch()), 3000);
+    return () => {
+      alive = false;
+      clearInterval(slow);
+      clearInterval(fast);
+    };
+  }, []);
+  if (bluez === "absent") return null;
+  if (on === false) return "off";
+  if (bluez === "connected") return "connected";
+  if (on === true) return "on";
+  return bluez;
 }

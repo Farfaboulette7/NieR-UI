@@ -4,15 +4,20 @@
 import { Navigation } from "@decky/ui";
 import { toaster } from "@decky/api";
 import type { ReactNode } from "react";
-import { NierGameDetail, NierMeter, NierOptionList, type NierField, type NierMenuItem, type NierOption } from "../nier-ui";
+import { NierAchievementList, NierGameDetail, NierMeter, NierOptionList, NierPeopleList, type NierField, type NierMenuItem, type NierOption } from "../nier-ui";
 import { playSfx } from "../launcher/audio";
 import { formatLastPlayed, getGame, launchGame } from "../launcher/steamLibrary";
 import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
-import { t } from "../launcher/i18n";
+import { lang, t } from "../launcher/i18n";
 import { shortcutGameId } from "./shortcuts";
 import { CatBoxArt, hasBox } from "./boxArt";
 import {
+  achievementsOf,
+  controlsOf,
+  loadAchievements,
+  loadControls,
+  openManual,
   cancelInstall,
   chooseExecutable,
   ensureShortcut,
@@ -340,9 +345,166 @@ function savesDetail(cat: CatState, romId: number, row?: string): ReactNode {
   );
 }
 
+// ───────────── Succès (AchievementsTab du launcher) ─────────────
+
+const AWARDS: Record<string, CatKey> = {
+  mastered: "awardMastered",
+  completed: "awardCompleted",
+  "beaten-hardcore": "awardBeatenHardcore",
+  "beaten-softcore": "awardBeaten",
+};
+
+const awardText = (award: string | null) => (award && AWARDS[award] ? ct(AWARDS[award]) : "");
+
+function achievementsBadge(romId: number): string | undefined {
+  const a = achievementsOf(romId);
+  if (!a || a === "loading") return undefined;
+  return a.linked ? `${a.earned}/${a.total}` : String(a.total);
+}
+
+/** Badges lus autour du curseur seulement : un jeu peut avoir plus de 200 succès. */
+const BADGES_AROUND = 10;
+
+function achievementsDetail(romId: number, row?: string): ReactNode {
+  const a = achievementsOf(romId);
+  if (!a || a === "loading") return <NierGameDetail art={false} description={ct("loading")} />;
+  const sel = row?.startsWith("ach:") ? Number(row.slice(4)) : 0;
+  const near = (i: number) => Math.abs(i - sel) <= BADGES_AROUND || (!row && i < 2 * BADGES_AROUND);
+  const lines: string[] = [];
+  if (a.linked) {
+    const award = awardText(a.award);
+    lines.push(
+      [ct("achSummary", { earned: a.earned, total: a.total, points: a.earnedPoints, totalPoints: a.totalPoints }), a.earnedHardcore ? ct("achHardcore", { n: a.earnedHardcore }) : "", award]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    if (a.lastUnlock) lines.push(ct("achLast", { date: formatDate(a.lastUnlock) }));
+    if (!a.progressKnown) lines.push(ct("achUnknown"));
+  } else lines.push(ct("achNotLinked"));
+  const friends = a.friends ?? [];
+  return (
+    <div>
+      <Text>{lines.join("\n")}</Text>
+      {friends.length > 0 && (
+        <NierPeopleList
+          heading={ct("achFriends")}
+          items={friends.map((f) => ({
+            id: String(f.id),
+            name: f.username,
+            status: [`${f.earned} / ${f.total}`, awardText(f.award), f.last ? ct("achLast", { date: formatDate(f.last) }) : ""].filter(Boolean).join(" · "),
+          }))}
+        />
+      )}
+      <NierAchievementList
+        unlocked={a.linked ? a.earned : 0}
+        total={a.linked ? a.total : 0}
+        progressLabel={ct("achTitle")}
+        selectedId={row}
+        items={a.achievements.map((x, i) => {
+          const when = x.unlockedHardcore
+            ? ct("achUnlockedHardcore", { date: formatDate(x.unlockedHardcore) })
+            : x.unlocked
+              ? ct("achUnlocked", { date: formatDate(x.unlocked) })
+              : "";
+          return {
+            id: `ach:${i}`,
+            name: x.title,
+            description: [x.description, when].filter(Boolean).join(" · "),
+            achieved: !!x.unlocked,
+            note: ct("achPoints", { n: x.points }),
+            icon: near(i) ? imageUrl(x.unlocked ? x.badgeUrl : (x.badgeLockUrl ?? x.badgeUrl)) : undefined,
+          };
+        })}
+      />
+    </div>
+  );
+}
+
+// ───────────── Contrôles (onglet Contrôles du launcher, en lecture seule) ─────────────
+
+const DECK_BUTTONS: Record<string, string> = {
+  south: "A",
+  east: "B",
+  west: "X",
+  north: "Y",
+  lb: "L1",
+  rb: "R1",
+  lt: "L2",
+  rt: "R2",
+  ls: "L3",
+  rs: "R3",
+  select: "View ⧉",
+  start: "Menu ☰",
+  mode: "STEAM",
+};
+
+/** Nom d'une source du launcher (`south`, `lx-`, `key:KeyW`…) sur le Deck. */
+function deckSource(source: string): string {
+  const en = lang() === "en";
+  if (DECK_BUTTONS[source]) return DECK_BUTTONS[source];
+  const arrows: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→" };
+  if (arrows[source]) return `${en ? "D-pad" : "Croix"} ${arrows[source]}`;
+  const stick = /^([lr])([xy])([+-])$/.exec(source);
+  if (stick) {
+    const [, side, axis, sign] = stick;
+    const dir = axis === "x" ? (sign === "-" ? "←" : "→") : sign === "-" ? "↑" : "↓";
+    const name = side === "l" ? (en ? "Left stick" : "Stick gauche") : en ? "Right stick" : "Stick droit";
+    return `${name} ${dir}`;
+  }
+  if (source.startsWith("key:")) return `${en ? "Key" : "Touche"} ${source.slice(4).replace(/^Key|^Digit/, "")}`;
+  if (source.startsWith("mouse:")) return `${en ? "Mouse" : "Souris"} ${source.slice(6)}`;
+  return source;
+}
+
+function controlsDetail(cat: CatState, romId: number): ReactNode {
+  if (!fullDetails(cat, romId)?.installed?.executable) return <NierGameDetail art={false} description={ct("ctlNotInstalled")} />;
+  const c = controlsOf(romId);
+  if (c === undefined) setTimeout(() => void loadControls(romId), 0);
+  if (!c || c === "loading") return <NierGameDetail art={false} description={ct("loading")} />;
+  if ("error" in c) return <NierGameDetail art={false} description={ct("error", { error: c.error })} />;
+  const fields: NierField[] = [{ label: ct("ctlPlayers"), value: c.ports ? String(c.ports) : ct("ctlPlayersAuto") }];
+  if (c.emulator) fields.push({ label: ct("ctlEmulator"), value: c.emulator });
+  // Boutons du joueur 1 (la manette du Deck) : réglage du launcher, sinon celui par défaut.
+  const mine = c.binds[0]?.pad ?? {};
+  const buttons: NierField[] = c.buttons.map((b) => {
+    const source = mine[b.id] ?? b.pad;
+    const name = deckSource(source);
+    return { label: b.label, value: mine[b.id] && mine[b.id] !== b.pad ? ct("ctlRemapped", { button: name }) : name };
+  });
+  return (
+    <div>
+      <NierGameDetail art={false} fields={fields} />
+      {buttons.length > 0 ? (
+        <>
+          <div className="nier-ach-progress-label" style={{ marginTop: 16 }}>
+            {ct("ctlButtons")}
+          </div>
+          <NierGameDetail art={false} fields={buttons} />
+        </>
+      ) : (
+        <Text>{ct("ctlNoButtons")}</Text>
+      )}
+      <Text>{ct("ctlDeckNote")}</Text>
+    </div>
+  );
+}
+
 // ───────────── La page ─────────────
 
-type PageItem = "play" | "info" | "favorite" | "install" | "language" | "saves" | "news" | "media" | "ranking" | "steam" | "uninstall";
+type PageItem =
+  | "play"
+  | "info"
+  | "favorite"
+  | "install"
+  | "language"
+  | "saves"
+  | "achievements"
+  | "controls"
+  | "news"
+  | "media"
+  | "ranking"
+  | "steam"
+  | "uninstall";
 
 /** Entrées du menu du jeu, dans l'ordre de la page Steam : l'action d'abord, la page Steam à la fin. */
 function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
@@ -352,8 +514,12 @@ function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
   const items: PageItem[] = ["play", "info", "favorite", "install"];
   if (cat.languages[romId]?.language) items.push("language");
   if (d?.installed?.executable) items.push("saves");
+  // Succès : seulement pour un jeu qui en a (comme l'onglet du launcher).
+  const ach = achievementsOf(romId);
+  if (ach && ach !== "loading") items.push("achievements");
+  if (d?.installed?.executable) items.push("controls");
   if (typeof sheet === "object" && sheet.changelog) items.push("news");
-  if (d?.game?.screenshotUrls?.length) items.push("media");
+  if (d?.game?.screenshotUrls?.length || d?.game?.manuals?.length) items.push("media");
   items.push("ranking");
   if (installed && !cat.progress[romId]) items.push("steam", "uninstall");
   return items;
@@ -365,6 +531,8 @@ const ITEM_LABEL: Record<Exclude<PageItem, "play">, CatKey> = {
   install: "pageInstall",
   language: "pageLanguage",
   saves: "pageSaves",
+  achievements: "pageAchievements",
+  controls: "pageControls",
   news: "pageNews",
   media: "pageMedia",
   ranking: "pageRanking",
@@ -387,8 +555,17 @@ function rowsOf(cat: CatState, romId: number, game: CatGame | undefined, item: P
       return languageRows(cat, romId);
     case "saves":
       return savesRows(cat, romId);
-    case "media":
-      return (d?.game?.screenshotUrls ?? []).map((_: string, i: number) => ({ id: `shot:${i}`, label: ct("shotN", { n: i + 1 }) }));
+    case "media": {
+      const manuals: unknown[] = d?.game?.manuals ?? [];
+      return [
+        ...manuals.map((_, i) => ({ id: `manual:${i}`, label: manuals.length > 1 ? ct("livretN", { n: i + 1 }) : ct("livret") })),
+        ...(d?.game?.screenshotUrls ?? []).map((_: string, i: number) => ({ id: `shot:${i}`, label: ct("shotN", { n: i + 1 }) })),
+      ];
+    }
+    case "achievements": {
+      const a = achievementsOf(romId);
+      return a && a !== "loading" ? a.achievements.map((_, i) => ({ id: `ach:${i}`, label: "" })) : [];
+    }
     case "steam":
       return [
         { id: "steam:open", label: ct("actionOpenSteamPage") },
@@ -427,6 +604,10 @@ function activateRow(cat: CatState, romId: number, item: PageItem, row: string) 
     playSfx("confirm");
     if (row === "steam:open") return openSteamPage(cat, romId);
     if (row === "steam:shortcut") return void ensureShortcut(romId, true);
+  }
+  if (item === "media" && row.startsWith("manual:")) {
+    playSfx("confirm");
+    return openManual(romId, Number(row.slice(7)), d?.game?.name ?? "");
   }
   if (item === "uninstall" && row === "uninstall:yes") {
     playSfx("confirm");
@@ -544,16 +725,20 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
     }
     case "media": {
       const shots: string[] = g?.screenshotUrls ?? [];
-      if (!shots.length) return <NierGameDetail art={false} description={ct("noShots")} />;
-      const i = row ? Number(row.slice(5)) : 0;
-      return (
-        <NierGameDetail
-          image={imageUrl(shots[i] ?? shots[0])}
-          imageAlt={g?.name}
-          actions={<NierOptionList options={rowsOf(cat, romId, game, "media")} selectedId={row} />}
-        />
-      );
+      const manuals: unknown[] = g?.manuals ?? [];
+      if (!shots.length && !manuals.length) return <NierGameDetail art={false} description={ct("noShots")} />;
+      const options = <NierOptionList options={rowsOf(cat, romId, game, "media")} selectedId={row} />;
+      // Livret : la jaquette, et comment le lire.
+      if (row?.startsWith("manual:") || (!row && !shots.length)) {
+        return <NierGameDetail image={cover ? [cover] : []} imageAlt={g?.name} actions={options} description={ct("manualDesc")} />;
+      }
+      const i = row?.startsWith("shot:") ? Number(row.slice(5)) : 0;
+      return <NierGameDetail image={imageUrl(shots[i] ?? shots[0])} imageAlt={g?.name} actions={options} />;
     }
+    case "achievements":
+      return achievementsDetail(romId, row);
+    case "controls":
+      return controlsDetail(cat, romId);
     case "ranking": {
       if (sheet === "loading") return <NierGameDetail art={false} description={ct("loading")} />;
       const rows = sh?.ranking ?? [];
@@ -590,6 +775,7 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
  */
 export function gamePageView(cat: CatState, romId: number, game: CatGame | undefined): TabView {
   if (!cat.details[romId]) setTimeout(() => void loadDetails(romId), 0);
+  if (achievementsOf(romId) === undefined) setTimeout(() => void loadAchievements(romId), 0);
   const d = fullDetails(cat, romId);
   const name = d?.game?.name ?? game?.name ?? `#${romId}`;
   const items = pageItems(cat, romId, game);
@@ -601,7 +787,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
       (i): NierMenuItem => ({
         id: i,
         label: itemLabel(cat, romId, game, i),
-        badge: i === "play" && cat.progress[romId] ? "↓" : i === "favorite" && cat.favorites.has(romId) ? "★" : undefined,
+        badge: i === "play" && cat.progress[romId] ? "↓" : i === "favorite" && cat.favorites.has(romId) ? "★" : i === "achievements" ? achievementsBadge(romId) : undefined,
       }),
     ),
     detail: (id, row) => {
@@ -634,7 +820,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
               return o ? offerRow(o) : undefined;
             })()
           : undefined;
-      return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row) } satisfies PanelDef;
+      return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row), browseOnly: item === "achievements" } satisfies PanelDef;
     },
     hint: (id) => {
       const item = asItem(id);
@@ -646,6 +832,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
         return isInstalled(cat, romId, game) ? ct("hintLaunch") : ct("actionInstall");
       }
       if (!rowsOf(cat, romId, game, item).length) return undefined;
+      if (item === "achievements") return ct("achBrowse");
       return item === "steam" ? ct("hintOpen") : ct("choose");
     },
     back: () => {

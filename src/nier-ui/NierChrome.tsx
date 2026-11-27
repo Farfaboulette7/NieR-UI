@@ -1,5 +1,5 @@
-// Éléments repris des barres Steam (heure, batterie, aides de boutons),
-// redessinés au style YoRHA. Purement visuels : l'hôte fournit les valeurs.
+// Éléments repris des barres Steam (heure, batterie, Wi-Fi, Bluetooth, aides de boutons),
+// redessinés au style YoRHa. Purement visuels : l'hôte fournit les valeurs.
 
 export interface NierBattery {
   /** 0 à 1 */
@@ -7,10 +7,66 @@ export interface NierBattery {
   charging: boolean;
 }
 
-export function NierStatus({ time, battery }: { time: string; battery?: NierBattery | null }) {
+/** Wi-Fi : coupé, sans réseau, ou connecté avec 0 à 3 arcs allumés. */
+export type NierWifi = { state: "off" } | { state: "disconnected" } | { state: "connected"; bars: 0 | 1 | 2 | 3 };
+export type NierBluetooth = "off" | "on" | "connected";
+
+function WifiIcon({ wifi }: { wifi: NierWifi }) {
+  const lit = wifi.state === "connected" ? wifi.bars : -1;
+  // Trois arcs et un point, du centre vers l'extérieur ; les arcs éteints restent en filigrane.
+  const arcs = ["M7.2 12.6a4 4 0 0 1 5.6 0", "M4.4 9.8a8 8 0 0 1 11.2 0", "M1.6 7a12 12 0 0 1 16.8 0"];
+  return (
+    <svg className="nier-status-icon" data-state={wifi.state} viewBox="0 0 20 18" aria-hidden="true">
+      <circle cx="10" cy="15.4" r="1.6" fill="currentColor" opacity={wifi.state === "connected" ? 1 : 0.35} />
+      {arcs.map((d, i) => (
+        <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" opacity={i < lit ? 1 : 0.25} />
+      ))}
+      {wifi.state !== "connected" && <path d="M3 2 L17 16" stroke="currentColor" strokeWidth="2" />}
+    </svg>
+  );
+}
+
+function BluetoothIcon({ bt }: { bt: NierBluetooth }) {
+  return (
+    <svg className="nier-status-icon" data-state={bt} viewBox="0 0 14 20" aria-hidden="true">
+      <path
+        d="M3 6 L11 13 L7 16.5 V3.5 L11 7 L3 14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="miter"
+        opacity={bt === "off" ? 0.35 : 1}
+      />
+      {bt === "connected" && (
+        <>
+          <rect x="0" y="9" width="2" height="2" fill="currentColor" />
+          <rect x="12" y="9" width="2" height="2" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+export function NierStatus({
+  time,
+  battery,
+  wifi,
+  bluetooth,
+}: {
+  time: string;
+  battery?: NierBattery | null;
+  wifi?: NierWifi | null;
+  bluetooth?: NierBluetooth | null;
+}) {
   const pct = battery ? Math.round(battery.level * 100) : 0;
   return (
     <div className="nier-status">
+      {(wifi || bluetooth) && (
+        <span className="nier-status-icons">
+          {bluetooth && <BluetoothIcon bt={bluetooth} />}
+          {wifi && <WifiIcon wifi={wifi} />}
+        </span>
+      )}
       <span className="nier-status-time">{time}</span>
       {battery && (
         <span className="nier-battery" data-low={pct <= 15 && !battery.charging} data-charging={battery.charging}>
@@ -65,7 +121,7 @@ export function NierHint({ button, label }: { button: NierButton | NierButton[];
           {GLYPH[b]}
         </span>
       ))}
-      {label}
+      <span className="nier-hint-label">{label}</span>
     </span>
   );
 }

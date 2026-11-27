@@ -139,6 +139,15 @@ export const NIER_DETAIL_CSS = `
 .nier-ach-item[data-achieved="false"] {
   opacity: 0.55;
 }
+.nier-ach-item[data-selected="true"] {
+  opacity: 1;
+  background-color: var(--nier-low);
+  color: var(--nier-high);
+}
+.nier-ach-item[data-selected="true"] .nier-ach-desc,
+.nier-ach-item[data-selected="true"] .nier-ach-note {
+  color: var(--nier-high);
+}
 .nier-ach-icon {
   flex: none;
   width: 40px;

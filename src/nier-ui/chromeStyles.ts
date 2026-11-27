@@ -42,6 +42,16 @@ export const NIER_CHROME_CSS = `
   font-size: 18px;
   letter-spacing: var(--nier-tracking-wide);
 }
+.nier-status-icons {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.nier-status-icon {
+  display: block;
+  height: 20px;
+  width: auto;
+}
 .nier-battery {
   display: flex;
   align-items: center;

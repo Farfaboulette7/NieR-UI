@@ -11,6 +11,7 @@
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -23,9 +24,11 @@ CLI_NAME = "FarfaLauncherDeck-linux-x86_64"
 LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
 READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique",
-                 "resultat", "reveil", "favoris", "fiche", "succes"}
+                 "resultat", "reveil", "favoris", "fiche", "succes", "compte-ra", "commandes"}
 WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer", "veille", "favori"}
 TIMEOUT = 180
+# Pages de livret rendues en PNG (pdftoppm, fourni par SteamOS), gardées au plus.
+MANUAL_PAGES_KEPT = 300
 # Longueur maximale d'une ligne JSON du moteur (une fiche de jeu PC peut peser plusieurs Mo).
 LINE_LIMIT = 64 * 1024 * 1024
 
@@ -193,6 +196,67 @@ class Catalogue:
         res = await run(["image", url], timeout=60)
         path = (res.get("data") or {}).get(url)
         return self._register_file(path) if path and os.path.isfile(path) else None
+
+    # ───── livrets PDF : le navigateur de Steam ne les affiche pas, on rend page par page ─────
+    async def manual_page(self, rom_id: int, index: int, page: int, width: int) -> dict:
+        """Page `page` (à partir de 1) du livret n° `index`, en PNG large de `width` pixels."""
+        res = await run(["livret", int(rom_id), int(index)], timeout=600)
+        data = res.get("data") or {}
+        path = data.get("path")
+        if not path or not os.path.isfile(path):
+            return {"error": res.get("error") or "manual", "message": res.get("message") or "Livret introuvable."}
+        if not shutil.which("pdftoppm") or not shutil.which("pdfinfo"):
+            return {"error": "pdftoppm", "message": "pdftoppm manque sur ce Deck (paquet poppler de SteamOS)."}
+        pages = await self._pdf_pages(path)
+        if pages < 1:
+            return {"error": "pdf", "message": "Livret illisible."}
+        page = max(1, min(pages, int(page)))
+        width = max(200, min(4000, int(width)))
+        folder = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "livrets")
+        os.makedirs(folder, exist_ok=True)
+        key = hashlib.sha1(path.encode("utf-8", "surrogateescape")).hexdigest()[:16]
+        base = os.path.join(folder, f"{key}-{page}-{width}")
+        out = base + ".png"
+        if not os.path.isfile(out):
+            proc = await asyncio.create_subprocess_exec(
+                "pdftoppm", "-png", "-singlefile", "-f", str(page), "-l", str(page),
+                "-scale-to-x", str(width), "-scale-to-y", "-1", path, base,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            try:
+                await asyncio.wait_for(proc.wait(), 60)
+            except asyncio.TimeoutError:
+                proc.kill()
+            if not os.path.isfile(out):
+                return {"error": "pdf", "message": f"Page {page} illisible."}
+            self._prune_pages(folder)
+        return {"data": {"url": self._register_file(out), "page": page, "pages": pages, "count": data.get("count", 1)}}
+
+    async def _pdf_pages(self, path: str) -> int:
+        proc = await asyncio.create_subprocess_exec(
+            "pdfinfo", path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), 30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return 0
+        for line in out.decode("utf-8", "replace").splitlines():
+            if line.startswith("Pages:"):
+                try:
+                    return int(line.split(":", 1)[1])
+                except ValueError:
+                    return 0
+        return 0
+
+    @staticmethod
+    def _prune_pages(folder: str):
+        try:
+            files = sorted((os.path.join(folder, f) for f in os.listdir(folder)), key=os.path.getmtime)
+            for f in files[:-MANUAL_PAGES_KEPT]:
+                os.remove(f)
+        except OSError:
+            pass
 
     async def image_base64(self, url: str) -> dict | None:
         """Image en base64, pour les visuels d'un raccourci Steam."""

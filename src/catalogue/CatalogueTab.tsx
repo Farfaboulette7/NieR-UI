@@ -11,6 +11,7 @@ import { ct, type CatKey } from "./i18n";
 import { promptText } from "./prompt";
 import { CatBoxArt, hasBox } from "./boxArt";
 import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
+import { checkRa, loadRa, openRaProfile, raState } from "./store";
 import {
   CAT_KINDS,
   configure,
@@ -256,9 +257,31 @@ export function catalogueSettingsItem(cat: CatState): NierMenuItem {
   };
 }
 
+/** Lignes RetroAchievements (comme la partie RetroAchievements des paramètres du launcher). */
+const RA_ROWS = ["ra:link", "ra:check"] as const;
+
+function raRows(): { id: string; label: string }[] {
+  const { account, opened, checked } = raState();
+  const linked = !!account && typeof account === "object" && "username" in account && !!account.username;
+  return [
+    { id: "ra:link", label: opened ? ct("raOpened") : linked ? ct("raChange") : ct("raLink") },
+    { id: "ra:check", label: checked ? ct("raChecked") : ct("raCheck") },
+  ];
+}
+
+function raValue(offline: boolean): string {
+  const { account } = raState();
+  if (offline) return ct("offline");
+  if (account === undefined || account === "loading") return "…";
+  if ("error" in account) return ct("raUnreadable");
+  return account.username ?? ct("raNone");
+}
+
 export function catalogueSettingsDetail(cat: CatState, row?: string): ReactNode {
   const status = cat.status;
   const info = status?.data;
+  const offline = info?.connected === "offline";
+  if (raState().account === undefined && info?.connected === true) setTimeout(() => void loadRa(), 0);
   const connection =
     info?.connected === true ? `${ct("connected")}${info.username ? ` · ${info.username}` : ""}` : info?.connected === "offline" ? ct("offline") : ct("notConnected");
   return (
@@ -270,18 +293,29 @@ export function catalogueSettingsDetail(cat: CatState, row?: string): ReactNode 
           { label: ct("account"), value: connection },
           { label: ct("engine"), value: status?.cli ? (info?.version ?? "?") : ct("notInstalledEngine") },
           { label: ct("pendingSessions"), value: String(info?.pendingSessions ?? 0) },
+          { label: ct("raAccount"), value: raValue(offline) },
         ]}
       />
-      <NierOptionList options={SETTINGS_ROWS.map((r) => ({ id: r, label: ct(ROW_LABEL[r]) }))} selectedId={row} />
-      <Text>{cat.busy ?? cat.notice ?? ct("settingsDesc")}</Text>
+      <NierOptionList options={[...SETTINGS_ROWS.map((r) => ({ id: r, label: ct(ROW_LABEL[r]) })), ...raRows()]} selectedId={row} />
+      <Text>{row?.startsWith("ra:") ? ct("raHelp") : (cat.busy ?? cat.notice ?? ct("settingsDesc"))}</Text>
     </div>
   );
 }
 
 export function catalogueSettingsPanel(cat: CatState): PanelDef {
   return {
-    rows: [...SETTINGS_ROWS],
+    rows: [...SETTINGS_ROWS, ...RA_ROWS],
     activate: (row) => {
+      if (row === "ra:link") {
+        const { account } = raState();
+        if (!account || typeof account !== "object" || !("profileUrl" in account) || !account.profileUrl) return playSfx("unfocus");
+        playSfx("confirm");
+        return openRaProfile();
+      }
+      if (row === "ra:check") {
+        playSfx("confirm");
+        return void checkRa();
+      }
       if (cat.busy) return;
       playSfx("confirm");
       if (row === "server") {

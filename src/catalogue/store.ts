@@ -2,6 +2,7 @@
 // cache le temps de la session, et installations en cours. Hors de React, avec
 // un abonnement (useCatalogue) comme settings.ts.
 import { addEventListener, callable, removeEventListener, toaster } from "@decky/api";
+import { Navigation } from "@decky/ui";
 import { useEffect, useState } from "react";
 import { ct } from "./i18n";
 import { createShortcut, removeShortcut } from "./shortcuts";
@@ -809,4 +810,199 @@ export async function loadSheet(romId: number, force = false) {
 export async function syncGame(romId: number) {
   const r = await backendCall(["synchroniser", romId]);
   toaster.toast({ title: "NieRDeck", body: r.error ? ct("error", { error: errorText(r) }) : ct("synced", { n: r.data?.games?.length ?? 0 }) });
+}
+
+// ───────────── Succès RetroAchievements (onglet Succès, comme AchievementsTab du launcher) ─────────────
+
+export interface CatAchievement {
+  id: number | null;
+  title: string;
+  description: string;
+  points: number;
+  badgeUrl: string | null;
+  badgeLockUrl: string | null;
+  unlocked: string | null;
+  unlockedHardcore: string | null;
+}
+
+export interface CatFriendAchievements {
+  id: number;
+  username: string;
+  earned: number;
+  earnedHardcore: number;
+  total: number;
+  award: string | null;
+  last: string | null;
+}
+
+export interface CatAchievements {
+  raId: number;
+  linked: boolean;
+  progressKnown: boolean;
+  total: number;
+  totalPoints: number;
+  earned: number;
+  earnedHardcore: number;
+  earnedPoints: number;
+  award: string | null;
+  lastUnlock: string | null;
+  achievements: CatAchievement[];
+  friends: CatFriendAchievements[] | null;
+}
+
+/** null : le jeu n'a pas de succès (ou lecture impossible : l'entrée ne s'affiche pas). */
+const achievements: Record<number, CatAchievements | null | "loading"> = {};
+
+export const achievementsOf = (romId: number) => achievements[romId];
+
+export async function loadAchievements(romId: number, force = false) {
+  if (achievements[romId] !== undefined && !force) return;
+  achievements[romId] = "loading";
+  changed();
+  const r = await backendCall(["succes", romId]);
+  achievements[romId] = r.data && Array.isArray(r.data.achievements) && r.data.achievements.length ? r.data : null;
+  changed();
+}
+
+// ───────────── Compte RetroAchievements (Système → FarfaLauncher, comme les paramètres du launcher) ─────────────
+
+export interface CatRaAccount {
+  username: string | null;
+  profileUrl: string | null;
+}
+
+let ra: CatRaAccount | { error: string } | "loading" | undefined;
+let raOpened = false;
+let raChecked = false;
+
+export const raState = () => ({ account: ra, opened: raOpened, checked: raChecked });
+
+/** Relit le compte ; true si la lecture a réussi. */
+export async function loadRa(): Promise<boolean> {
+  if (ra === "loading") return false;
+  ra = "loading";
+  changed();
+  const r = await backendCall(["compte-ra"]);
+  ra = r.data ? (r.data as CatRaAccount) : { error: errorText(r) };
+  changed();
+  return !!r.data;
+}
+
+/** Ouvre la page du profil RomM (où le joueur indique son pseudo RetroAchievements) dans le navigateur de Steam. */
+export function openRaProfile() {
+  if (!ra || typeof ra !== "object" || !("profileUrl" in ra) || !ra.profileUrl) return;
+  Navigation.NavigateToExternalWeb(ra.profileUrl);
+  raOpened = true;
+  changed();
+}
+
+export async function checkRa() {
+  const ok = await loadRa();
+  if (ok) {
+    raChecked = true;
+    changed();
+    // Les succès déjà lus ne savaient peut-être pas encore que le compte était lié.
+    for (const id of Object.keys(achievements)) delete achievements[Number(id)];
+  }
+}
+
+// ───────────── Commandes (onglet Contrôles du launcher, en lecture seule) ─────────────
+
+export interface CatControls {
+  ports: number;
+  layout: string | null;
+  buttons: { id: string; label: string; pad: string; keys: string }[];
+  binds: ({ pad: Record<string, string>; keys: Record<string, string> } | null)[];
+  emulator: string | null;
+}
+
+const controls: Record<number, CatControls | { error: string } | "loading"> = {};
+
+export const controlsOf = (romId: number) => controls[romId];
+
+export async function loadControls(romId: number) {
+  if (controls[romId] !== undefined) return;
+  controls[romId] = "loading";
+  changed();
+  const r = await backendCall(["commandes", romId]);
+  controls[romId] = r.data ? (r.data as CatControls) : { error: errorText(r) };
+  changed();
+}
+
+// ───────────── Livret PDF (Médias → Livret), lu page par page en plein écran ─────────────
+
+const backendManualPage = callable<[romId: number, index: number, page: number, width: number], CliResult<{ url: string; page: number; pages: number; count: number }>>(
+  "catalogue_manual_page",
+);
+
+/** Zooms proposés (1 : la page entière à l'écran). */
+export const MANUAL_ZOOMS = [1, 1.5, 2, 3];
+/** Largeur rendue d'une page au zoom 1 (écran de 1280 × 800). */
+const MANUAL_WIDTH = 1000;
+
+export interface ManualView {
+  romId: number;
+  index: number;
+  title: string;
+  page: number;
+  pages: number;
+  zoom: number;
+  url?: string;
+  loading: boolean;
+  error?: string;
+}
+
+let manual: ManualView | null = null;
+let manualRequest = 0;
+
+export const manualState = () => manual;
+
+const manualWidth = (zoom: number) => Math.round(MANUAL_WIDTH * zoom);
+
+async function showManualPage() {
+  if (!manual) return;
+  const m = manual;
+  const ticket = ++manualRequest;
+  manual = { ...m, loading: true, error: undefined };
+  changed();
+  const r = await backendManualPage(m.romId, m.index, m.page, manualWidth(m.zoom)).catch((e) => ({ error: "call", message: String(e) }) as CliResult<any>);
+  if (ticket !== manualRequest || !manual) return;
+  if (r.data) {
+    manual = { ...manual, url: r.data.url, page: r.data.page, pages: r.data.pages, loading: false };
+    // Page suivante préparée pendant la lecture : elle s'affiche tout de suite.
+    if (r.data.page < r.data.pages) void backendManualPage(m.romId, m.index, r.data.page + 1, manualWidth(m.zoom)).catch(() => undefined);
+  } else manual = { ...manual, loading: false, error: errorText(r) };
+  changed();
+}
+
+export function openManual(romId: number, index: number, title: string) {
+  manual = { romId, index, title, page: 1, pages: 0, zoom: 1, loading: true };
+  void showManualPage();
+}
+
+export function closeManual() {
+  manual = null;
+  manualRequest++;
+  changed();
+}
+
+/** Page précédente / suivante ; false au bout du livret. */
+export function manualTurn(delta: number): boolean {
+  if (!manual || !manual.pages) return false;
+  const page = Math.max(1, Math.min(manual.pages, manual.page + delta));
+  if (page === manual.page) return false;
+  manual = { ...manual, page };
+  void showManualPage();
+  return true;
+}
+
+/** Zoom suivant / précédent ; false s'il est déjà au bout. */
+export function manualZoom(delta: number): boolean {
+  if (!manual) return false;
+  const i = MANUAL_ZOOMS.indexOf(manual.zoom);
+  const next = MANUAL_ZOOMS[Math.max(0, Math.min(MANUAL_ZOOMS.length - 1, i + delta))];
+  if (next === manual.zoom) return false;
+  manual = { ...manual, zoom: next };
+  void showManualPage();
+  return true;
 }

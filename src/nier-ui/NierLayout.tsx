@@ -161,6 +161,26 @@ function useMenuWindow(listRef: RefObject<HTMLUListElement | null>, count: numbe
   return { start: s, end, before: s * pitch, after: (count - end) * pitch, onScroll };
 }
 
+/** Paliers de resserrement du pied de page (voir layoutStyles). */
+const FOOTER_STEPS = 3;
+
+/**
+ * Pied de page trop chargé : resserré palier par palier, jusqu'à ce que tout tienne sur une
+ * ligne. Mesuré à chaque rendu, en touchant le DOM directement (pas de rendu en plus).
+ */
+function useFooterFit(ref: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let step = 0;
+    el.removeAttribute("data-compact");
+    while (el.scrollWidth > el.clientWidth + 1 && step < FOOTER_STEPS) {
+      step += 1;
+      el.dataset.compact = String(step);
+    }
+  });
+}
+
 export function NierLayout({
   title = "MENU",
   tabs = [],
@@ -182,6 +202,8 @@ export function NierLayout({
   theme = "light",
 }: NierLayoutProps) {
   const listRef = useRef<HTMLUListElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  useFooterFit(footerRef);
   const activeIndex = Math.max(0, menuItems.findIndex((i) => i.id === activeItemId));
   const win = useMenuWindow(listRef, menuItems.length, activeIndex, activeTabId);
   // Rappels stables pour les lignes mémorisées (l'hôte en recrée à chaque rendu).
@@ -208,7 +230,9 @@ export function NierLayout({
       <NierStyles />
 
       <header className="nier-header">
-        <h1 className="nier-title">{title}</h1>
+        <h1 className="nier-title" data-length={title.length > 34 ? "very-long" : title.length > 22 ? "long" : undefined}>
+          {title}
+        </h1>
         {tabs.length > 1 && (
         <ul className="nier-tabs" role="tablist">
           {tabs.map((tab) => (
@@ -264,7 +288,7 @@ export function NierLayout({
       </main>
 
       {(footerStart || footer) && (
-        <footer className="nier-footer">
+        <footer className="nier-footer" ref={footerRef}>
           <div className="nier-footer-group">{footerStart}</div>
           <div className="nier-footer-group">{footer}</div>
         </footer>

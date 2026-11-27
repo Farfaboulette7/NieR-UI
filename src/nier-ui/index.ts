@@ -20,7 +20,7 @@ export type { NierAchievementItem, NierAchievementListProps } from "./NierAchiev
 export { NierStage } from "./NierStage";
 export { NierSlideOver } from "./NierSlideOver";
 export { NierStatus, NierHint } from "./NierChrome";
-export type { NierBattery, NierButton } from "./NierChrome";
+export type { NierBattery, NierBluetooth, NierButton, NierWifi } from "./NierChrome";
 export { NIER_TOKENS_CSS, nierTokensCss } from "./tokens";
 export type { NierTheme } from "./tokens";
 export { NIER_LAYOUT_CSS } from "./layoutStyles";

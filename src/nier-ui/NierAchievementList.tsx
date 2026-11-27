@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export interface NierAchievementItem {
   id: string;
   name: string;
@@ -16,10 +18,16 @@ export interface NierAchievementListProps {
   emptyText?: string;
   /** Libellé de la barre de progression. */
   progressLabel?: string;
+  /** Ligne sous le curseur (liste parcourue à la manette), gardée visible. */
+  selectedId?: string;
 }
 
 /** Progression + liste de succès. Les styles viennent de <NierStyles />. */
-export function NierAchievementList({ unlocked, total, items, emptyText, progressLabel = "Progression" }: NierAchievementListProps) {
+export function NierAchievementList({ unlocked, total, items, emptyText, progressLabel = "Progression", selectedId }: NierAchievementListProps) {
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (selectedId) listRef.current?.querySelector<HTMLElement>('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
   const percent = total ? Math.round((unlocked / total) * 100) : 0;
   return (
     <div className="nier-ach">
@@ -37,9 +45,9 @@ export function NierAchievementList({ unlocked, total, items, emptyText, progres
         </div>
       )}
       {items.length === 0 && emptyText && <p className="nier-game-description">{emptyText}</p>}
-      <ul className="nier-ach-list">
+      <ul className="nier-ach-list" ref={listRef}>
         {items.map((item) => (
-          <li key={item.id} className="nier-ach-item" data-achieved={item.achieved}>
+          <li key={item.id} className="nier-ach-item" data-achieved={item.achieved} data-selected={item.id === selectedId}>
             <span className="nier-ach-icon">{item.icon && <img src={item.icon} alt="" />}</span>
             <span className="nier-ach-text">
               <span className="nier-ach-name">{item.name}</span>

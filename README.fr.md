@@ -11,9 +11,9 @@ Plugin [Decky Loader](https://decky.xyz) pour Steam Deck : un launcher de jeux p
   - **Steam**, en deux sous-onglets (L2 / R2) :
     - **Bibliothèque** : les jeux installés, avec le temps de jeu (jeux non-Steam compris), la dernière session et la taille ;
     - **Collections** : tes collections Steam, favoris en tête.
-  - **Farfa project** : le catalogue du serveur RomM de FarfaLauncher (quand un serveur est réglé).
+  - **Farfa project** : le catalogue du serveur RomM de FarfaLauncher (quand un serveur est réglé). Page de chaque jeu : succès RetroAchievements (avec ceux des amis), contrôles du jeu sur le Deck, livret lu en plein écran (L1 / R1 pages, L2 / R2 zoom).
   - **Musique** : les musiques de fond (marche / arrêt, aléatoire, volume) et la liste des morceaux.
-  - **Système** : les réglages du plugin (voir plus bas).
+  - **Système** : les réglages du plugin (voir plus bas), dont le compte RetroAchievements (Système → FarfaLauncher).
 - **Page de jeu NieR** à la place de celle de Steam. Elle glisse depuis la droite par-dessus le launcher, et repart avec B :
   - Jouer / Installer ;
   - Informations (Magasin Steam) ;

@@ -9,6 +9,8 @@ export interface PanelDef {
   /** Gauche / droite sur une ligne réglable (volume, luminosité) ; true si pris en charge. */
   adjust?: (row: string, delta: number) => boolean;
   adjustable?: (row: string) => boolean;
+  /** Liste seulement parcourue (succès) : A n'y fait rien, son aide est masquée. */
+  browseOnly?: boolean;
 }
 
 /** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */

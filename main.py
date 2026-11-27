@@ -261,6 +261,10 @@ class Plugin:
         await _ensure_server()
         return await _catalogue.image(url)
 
+    async def catalogue_manual_page(self, rom_id: int, index: int, page: int, width: int):
+        await _ensure_server()
+        return await _catalogue.manual_page(rom_id, index, page, width)
+
     async def catalogue_image_base64(self, url: str):
         return await _catalogue.image_base64(url)
 
@@ -293,6 +297,34 @@ class Plugin:
         except Exception as e:
             decky.logger.error(f"sons et musique indisponibles : {e}")
             return {"base": None, "sfx": {}, "sfxDir": None, "music": [], "musicDir": _music_dir(), "error": str(e)}
+
+    # ───── barre d'état : Bluetooth (Steam ne l'expose pas au JS) ─────
+    async def get_bluetooth(self):
+        """« absent », « off », « on » ou « connected » (un appareil connecté), lu dans BlueZ."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "busctl", "--system", "--json=short", "call", "org.bluez", "/",
+                "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), 4)
+            objects = json.loads(out)["data"][0]
+        except Exception:
+            return "absent"
+        powered = None
+        connected = False
+        for ifaces in objects.values():
+            adapter = ifaces.get("org.bluez.Adapter1")
+            if adapter is not None:
+                powered = bool(powered) or bool(adapter.get("Powered", {}).get("data"))
+            device = ifaces.get("org.bluez.Device1")
+            if device is not None and device.get("Connected", {}).get("data"):
+                connected = True
+        if powered is None:
+            return "absent"
+        if not powered:
+            return "off"
+        return "connected" if connected else "on"
 
     # ───── mises à jour (releases GitHub) ─────
     async def get_version(self):

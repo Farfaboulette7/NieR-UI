@@ -14,7 +14,7 @@ import { launcherState } from "./launcherState";
 import { MusicFooter, requestMusicView } from "./MusicFooter";
 import { getSettings, useSettings } from "./settings";
 import { formatLastPlayed, formatPlaytime, formatSize, getGame, launchGame, type SteamGame } from "./steamLibrary";
-import { useBattery, useClock } from "./useSystemStatus";
+import { useBattery, useBluetooth, useClock, useWifi } from "./useSystemStatus";
 
 // ───────────── Retour à la page Steam d'origine ─────────────
 // Demandé depuis la page NieR (« Page Steam d'origine », « Installer ») ;
@@ -105,6 +105,8 @@ export interface GamePanelProps {
 export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }: GamePanelProps) {
   const time = useClock();
   const battery = useBattery();
+  const wifi = useWifi();
+  const bluetooth = useBluetooth();
   const game = useGame(appid);
   const [itemId, setItemIdState] = useState<ItemId>("play");
   // La zone de droite a la main : haut/bas la font défiler, B ou gauche rend la main au menu.
@@ -355,7 +357,7 @@ export function GamePanel({ appid, onBack, onOriginal, actionRef, footerExtra }:
   return (
     <NierLayout
       title={game.name}
-      status={<NierStatus time={time} battery={battery} />}
+      status={<NierStatus time={time} battery={battery} wifi={wifi} bluetooth={bluetooth} />}
       menuTitle={t("gameMenu")}
       menuItems={items.map(({ id, label, badge }) => ({ id, label, badge }))}
       activeItemId={current.id}
