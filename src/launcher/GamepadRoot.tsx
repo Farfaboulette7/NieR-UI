@@ -3,7 +3,7 @@
 import { Focusable, GamepadButton, type GamepadEvent } from "@decky/ui";
 import { useMemo, useRef, type ReactNode } from "react";
 
-export type NierAction = "up" | "down" | "left" | "right" | "prevTab" | "nextTab" | "confirm" | "back" | "music" | "musicNext";
+export type NierAction = "up" | "down" | "left" | "right" | "prevTab" | "nextTab" | "prevSub" | "nextSub" | "confirm" | "back" | "music" | "musicNext";
 
 /** Index suivant dans une liste : boucle si `wrap`, sinon s'arrête aux bords. */
 export const stepIndex = (index: number, delta: number, length: number, wrap: boolean) => {
@@ -29,6 +29,9 @@ const BUTTONS: Partial<Record<GamepadButton, NierAction>> = {
   [GamepadButton.CANCEL]: "back",
   [GamepadButton.BUMPER_LEFT]: "prevTab",
   [GamepadButton.BUMPER_RIGHT]: "nextTab",
+  // Sous-onglets (onglet Steam : Bibliothèque | Collections).
+  [GamepadButton.TRIGGER_LEFT]: "prevSub",
+  [GamepadButton.TRIGGER_RIGHT]: "nextSub",
 };
 
 /**

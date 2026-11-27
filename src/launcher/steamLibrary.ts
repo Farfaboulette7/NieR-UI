@@ -330,7 +330,7 @@ export function readLibrary(): SteamLibrary {
       recent: games
         .filter((g) => g.lastPlayed > 0)
         .sort((x, y) => y.lastPlayed - x.lastPlayed)
-        .slice(0, 30),
+        .slice(0, 20),
       collections,
     };
   } catch (e) {

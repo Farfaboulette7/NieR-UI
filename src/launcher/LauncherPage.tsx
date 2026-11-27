@@ -36,17 +36,28 @@ import { useWishlist, type Wishlist } from "./wishlist";
 
 const TABS: { id: string; label: StringKey }[] = [
   { id: "recent", label: "tabRecent" },
-  { id: "library", label: "tabLibrary" },
-  { id: "collections", label: "tabCollections" },
+  // Bibliothèque et Collections réunies, en sous-onglets (L2 / R2).
+  { id: "steam", label: "tabSteam" },
   { id: "store", label: "tabStore" },
   { id: "system", label: "tabSystem" },
 ];
 
+type SteamSub = "library" | "collections";
+const STEAM_SUBS: SteamSub[] = ["library", "collections"];
+
 // Sélection mémorisée : on la retrouve en revenant d'une autre page Steam.
-const remembered: { tabId: string; items: Record<string, string | undefined>; collectionId?: string } = {
+const remembered: { tabId: string; steamSub: SteamSub; items: Record<string, string | undefined>; collectionId?: string } = {
   tabId: TABS[0].id,
+  steamSub: "library",
   items: {},
 };
+
+/** Anciens onglets Bibliothèque et Collections : l'onglet Steam, sur le bon sous-onglet. */
+function migrateTab(id: string): string {
+  if (id !== "library" && id !== "collections") return id;
+  remembered.steamSub = id;
+  return "steam";
+}
 
 // L'animation d'ouverture (emblème YoRHa) se joue au démarrage, puis à chaque
 // sortie de veille si le launcher est à l'écran.
@@ -102,7 +113,8 @@ export function LauncherPage() {
     };
   }, []);
 
-  const [tabId, setTabIdState] = useState(remembered.tabId);
+  const [tabId, setTabIdState] = useState(() => (remembered.tabId = migrateTab(remembered.tabId)));
+  const [steamSub, setSteamSubState] = useState<SteamSub>(remembered.steamSub);
   const [items, setItems] = useState(remembered.items);
   const [collectionId, setCollectionIdState] = useState(remembered.collectionId);
   // Une collection ouverte a sa propre sélection.
@@ -110,10 +122,11 @@ export function LauncherPage() {
   const cat = useCatalogue();
   const catReady = catalogueReady();
   const tabs = TABS.map((x) => ({ id: x.id, label: t(x.label) }));
-  if (catReady) tabs.splice(3, 0, { id: "catalogue", label: ct("tab") });
+  if (catReady) tabs.splice(2, 0, { id: "catalogue", label: ct("tab") });
   // Page d'un jeu Farfa project : glissée par-dessus la liste, comme la page d'un jeu Steam.
   const catGame = tabId === "catalogue" && catReady ? catalogueGameView(cat) : null;
-  const baseKey = tabId === "collections" && collectionId ? `collection:${collectionId}` : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
+  const steamKey = steamSub === "collections" && collectionId ? `collection:${collectionId}` : `steam:${steamSub}`;
+  const baseKey = tabId === "steam" ? steamKey : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
   const tabKey = catGame ? `${baseKey}:${cat.openGame}` : baseKey;
   // Fermeture animée de la page du jeu Farfa project (elle repart vers la droite).
   const [catClosing, setCatClosing] = useState(false);
@@ -129,7 +142,8 @@ export function LauncherPage() {
     const t = setTimeout(closeCatGame, 600);
     return () => clearTimeout(t);
   }, [catClosing]);
-  const setTabId = (id: string) => setTabIdState((remembered.tabId = id));
+  const setTabId = (id: string) => setTabIdState((remembered.tabId = migrateTab(id)));
+  const setSteamSub = (s: SteamSub) => setSteamSubState((remembered.steamSub = s));
   const setItemId = (id: string | undefined) => setItems((remembered.items = { ...remembered.items, [tabKey]: id }));
   const setCollectionId = (id: string | undefined) => setCollectionIdState((remembered.collectionId = id));
 
@@ -175,12 +189,12 @@ export function LauncherPage() {
 
   // ───── Contenu de l'onglet courant ─────
   let view: TabView;
-  if (tabId === "library") {
+  if (tabId === "steam" && steamSub === "library") {
     view = gamesView(t("tabLibrary"), library.owned, library.error ?? t("noInstalledGames"), openGame);
     view.menuTitle = t("libraryCount", { installed: library.installed.length, total: library.owned.length });
   } else if (tabId === "recent") {
-    view = gamesView(t("recentlyPlayed"), library.recent, library.error ?? t("noRecentGames"), openGame);
-  } else if (tabId === "collections") {
+    view = recentView(library.recent, library.error ?? t("noRecentGames"), openGame, cat.shortcuts);
+  } else if (tabId === "steam") {
     const collection = library.collections.find((c) => c.id === collectionId);
     view = collection
       ? gamesView(collection.name, collection.games, t("emptyCollection"), openGame, () => {
@@ -284,6 +298,14 @@ export function LauncherPage() {
           setItemId(next.id);
         }
         return true;
+      case "prevSub":
+      case "nextSub": {
+        // Onglet Steam : Bibliothèque | Collections (la sélection de chacun est gardée).
+        if (catGame || tabId !== "steam") return false;
+        playSfx("tab");
+        setSteamSub(STEAM_SUBS[stepIndex(STEAM_SUBS.indexOf(steamSub), action === "prevSub" ? -1 : 1, STEAM_SUBS.length, true)]);
+        return true;
+      }
       case "prevTab":
       case "nextTab": {
         // Page d'un jeu : pas d'onglets, comme sur la page d'un jeu Steam.
@@ -341,6 +363,7 @@ export function LauncherPage() {
         onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
         menuTitle={listView.menuTitle}
+        subTabs={tabId === "steam" ? { labels: [t("tabLibrary"), t("tabCollections")], active: STEAM_SUBS.indexOf(steamSub) } : undefined}
         menuItems={listView.items}
         activeItemId={listCurrent?.id}
         onItemSelect={catGame ? () => {} : setItemId}
@@ -354,6 +377,7 @@ export function LauncherPage() {
           ) : (
             <>
               <NierHint button={["L1", "R1"]} label={t("tabs")} />
+              {tabId === "steam" && <NierHint button={["L2", "R2"]} label={t("subTabs")} />}
               {listCurrent && listView.adjustable?.(listCurrent.id) && <NierHint button="LEFTRIGHT" label={t("adjust")} />}
               {listHint && <NierHint button="A" label={listHint} />}
               {listView.back && <NierHint button="B" label={t("back")} />}
@@ -410,12 +434,13 @@ export function LauncherPage() {
 
 // ───────────── Vues des onglets ─────────────
 
-function gameDetail(game: SteamGame): ReactNode {
+function gameDetail(game: SteamGame, source?: string): ReactNode {
   return (
     <NierGameDetail
       image={game.banners}
       imageAlt={game.name}
       fields={[
+        ...(source ? [{ label: t("source"), value: source }] : []),
         { label: t("playtime"), value: formatPlaytime(game.playtime) },
         { label: t("lastSession"), value: formatLastPlayed(game.lastPlayed) },
         { label: t("size"), value: game.installed ? formatSize(game.sizeOnDisk) : "—" },
@@ -423,6 +448,33 @@ function gameDetail(game: SteamGame): ReactNode {
       ]}
     />
   );
+}
+
+/** Provenance d'un jeu lancé : Steam, FarfaLauncher (raccourci du Catalogue) ou autre raccourci. */
+function sourceOf(game: SteamGame, farfaAppids: Set<number>): { short: string; long: string } {
+  if (!game.shortcut) return { short: t("srcSteam"), long: t("srcSteam") };
+  if (farfaAppids.has(game.appid)) return { short: t("srcFarfaShort"), long: t("srcFarfa") };
+  return { short: t("srcOther"), long: t("srcOtherLong") };
+}
+
+/** Onglet Récents : les derniers jeux lancés, avec leur provenance dans la ligne. */
+function recentView(games: SteamGame[], empty: string, open: (g: SteamGame) => void, shortcuts: Record<string, number>): TabView {
+  const farfa = new Set(Object.values(shortcuts).map(Number));
+  const view = gamesView(t("recentlyPlayed"), games, empty, open);
+  view.items = games.map((g) => ({
+    id: String(g.appid),
+    label: g.name,
+    badge: `${sourceOf(g, farfa).short} · ${formatPlaytime(g.playtime, true)}`,
+    muted: !g.installed,
+  }));
+  const find = (id?: string) => games.find((g) => String(g.appid) === id);
+  view.detail = (id) => {
+    const game = find(id);
+    return game
+      ? { title: game.name, content: gameDetail(game, sourceOf(game, farfa).long) }
+      : { title: t("recentlyPlayed"), content: <NierGameDetail art={false} description={empty} /> };
+  };
+  return view;
 }
 
 /** Onglet listant des jeux : A ouvre la page du jeu. */

@@ -165,6 +165,30 @@ export const NIER_LAYOUT_CSS = `
   padding: 18px var(--nier-gutter);
 }
 
+/* Sous-onglets (L2 / R2) au-dessus du titre du menu : comme les onglets, en plus petit. */
+.nier-subtabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.nier-subtab {
+  flex: 1;
+  padding: 4px 10px;
+  font-size: 15px;
+  text-align: center;
+  letter-spacing: var(--nier-tracking-wide);
+  color: var(--nier-low);
+  background: var(--nier-high-mid);
+  border: solid var(--nier-low);
+  border-width: 0;
+  transition: background-color var(--nier-normal) var(--nier-ease), color var(--nier-fast) linear;
+}
+.nier-subtab[data-active="true"] {
+  background: var(--nier-low);
+  color: var(--nier-high);
+  border-width: var(--nier-line) 0;
+}
+
 .nier-section-title {
   margin: 0 0 14px;
   padding: 4px 14px;

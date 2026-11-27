@@ -36,6 +36,8 @@ export interface NierLayoutProps {
 
   /** Titre encadré au-dessus du menu gauche. */
   menuTitle?: string;
+  /** Sous-onglets au-dessus du titre du menu (ex. Bibliothèque | Collections), l'actif mis en avant. */
+  subTabs?: { labels: string[]; active: number };
   menuItems: NierMenuItem[];
   activeItemId?: string;
   /** Appelé quand un item reçoit le curseur (survol / focus). */
@@ -166,6 +168,7 @@ export function NierLayout({
   onTabChange,
   status,
   menuTitle,
+  subTabs,
   menuItems,
   activeItemId,
   onItemSelect,
@@ -230,6 +233,15 @@ export function NierLayout({
 
       <main className="nier-body">
         <nav className="nier-menu">
+          {subTabs && (
+            <div className="nier-subtabs" role="tablist">
+              {subTabs.labels.map((l, i) => (
+                <span key={l} role="tab" aria-selected={i === subTabs.active} className="nier-subtab" data-active={i === subTabs.active}>
+                  {l}
+                </span>
+              ))}
+            </div>
+          )}
           {menuTitle && <h2 className="nier-section-title">{menuTitle}</h2>}
           <ul className="nier-menu-list" role="listbox" ref={listRef} onScroll={win.onScroll}>
             {/* Longue liste : seules les lignes autour du curseur sont dessinées ; les
