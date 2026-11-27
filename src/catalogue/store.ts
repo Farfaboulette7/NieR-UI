@@ -49,7 +49,19 @@ export interface CatGame {
   pc: boolean;
   emulator: string | null;
   installed: boolean;
+  /** Façons d'y jouer sur le Deck (filtres Recomp / Émulation, badge), d'après le moteur. */
+  modes?: { recomp: boolean; emulation: boolean };
+  available?: boolean;
+  detailsLoaded?: boolean;
+  /** Une mise à jour attend ce jeu installé. */
+  update?: boolean;
+  /** Ajouté sur le serveur depuis moins de 24 h. */
+  new?: boolean;
 }
+
+/** Filtres des listes de jeux, comme la bibliothèque du launcher. */
+export type CatKind = "all" | "installed" | "recomp" | "emulation";
+export const CAT_KINDS: CatKind[] = ["all", "installed", "recomp", "emulation"];
 
 export interface CatDetails {
   game: any;
@@ -154,6 +166,10 @@ interface CatState {
   sheets: Record<number, CatSheet | "loading">;
   /** Historique des sauvegardes affiché à la place des actions d'un jeu. */
   history: { romId: number; versions: CatSaveVersion[] | null; error?: string; confirm: string | null } | null;
+  /** Favoris (collection RomM, partagée avec le launcher). */
+  favorites: Set<number>;
+  /** Filtre des listes de jeux. */
+  kind: CatKind;
 }
 
 const state: CatState = {
@@ -171,6 +187,8 @@ const state: CatState = {
   history: null,
   openGame: null,
   sheets: {},
+  favorites: new Set(),
+  kind: "all",
 };
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((l) => l());
@@ -190,6 +208,7 @@ export async function loadCatalogue(attempt = 0) {
     state.shortcuts = (await backendShortcuts()) ?? {};
     for (const id of (await backendInstalling()) ?? []) state.progress[id] ??= { phase: "prepare", done: 0, total: 0 };
     void autoUpdateEngine();
+    if (catalogueReady()) void loadFavorites();
   } catch (e) {
     console.error("[NieRDeck] catalogue", e);
     if (attempt < 12) setTimeout(() => void loadCatalogue(attempt + 1), 5000);
@@ -314,10 +333,20 @@ export async function loadList(key: string, force = false) {
   state.lists = { ...state.lists, [key]: { games: state.lists[key]?.games ?? [], loading: true } };
   changed();
   let r: CliResult<any>;
-  if (key === "installed") {
-    r = await backendCall(["installes"]);
-    // Jeux installés : leur état complet ; on garde ce qu'affiche la liste.
+  if (key === "favorites") {
+    r = await backendCall(["favoris"]);
     if (r.data) {
+      state.favorites = new Set(r.data.romIds ?? []);
+      if (r.data.offline) r = { error: "offline", message: ct("favoritesOffline") };
+    }
+  } else if (key === "installed") {
+    // Résumés comme les autres listes (badges, filtres) ; moteur d'avant : l'état installé.
+    r = await backendCall(["installes", "--resumes"]);
+    // Hors ligne (il faut le serveur) ou moteur d'avant : la liste locale des jeux installés.
+    if (r.error || (r.data && !(r.data.games ?? []).some((g: any) => "modes" in g))) r = await backendCall(["installes"]);
+    else if (r.data) r = { data: { games: r.data.games } };
+    // Jeux installés : leur état complet ; on garde ce qu'affiche la liste.
+    if (r.data && (r.data.games ?? []).some((g: any) => "romId" in g)) {
       r = {
         data: {
           games: (r.data.games ?? [])
@@ -638,6 +667,96 @@ export const logout = () =>
     return r.error ? ct("error", { error: errorText(r) }) : null;
   });
 
+/** Favoris de l'utilisateur (comme le launcher). */
+export async function loadFavorites() {
+  const r = await backendCall(["favoris"]);
+  if (!r.data) return;
+  state.favorites = new Set(r.data.romIds ?? []);
+  if (!r.data.offline) state.lists = { ...state.lists, favorites: { games: r.data.games ?? [], loading: false } };
+  changed();
+}
+
+/** Ajoute ou retire un favori ; le bouton change tout de suite, et revient si le serveur refuse. */
+export async function toggleFavorite(romId: number, name: string) {
+  const on = !state.favorites.has(romId);
+  const before = state.favorites;
+  state.favorites = new Set(before);
+  if (on) state.favorites.add(romId);
+  else state.favorites.delete(romId);
+  changed();
+  const r = await backendCall(["favori", romId, on ? "oui" : "non"]);
+  if (r.data) {
+    state.favorites = new Set(r.data.romIds ?? []);
+    // La liste Favoris se relit à sa prochaine ouverture.
+    const { favorites: _, ...rest } = state.lists;
+    state.lists = rest;
+    toaster.toast({ title: name, body: ct(on ? "favoriteAdded" : "favoriteRemoved") });
+  } else {
+    state.favorites = before;
+    toaster.toast({ title: name, body: ct("error", { error: errorText(r) }) });
+  }
+  changed();
+}
+
+/** Jeux nouveaux déjà ouverts (badge « Nouveau » retiré), comme le launcher : id → date (ms). */
+const SEEN_KEY = "nierdeck.seenGames";
+const NEW_FOR_MS = 24 * 3600 * 1000;
+const seen: Map<number, number> = (() => {
+  try {
+    return new Map(Object.entries(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}") as Record<string, number>).map(([k, v]) => [Number(k), v]));
+  } catch {
+    return new Map();
+  }
+})();
+
+export function markSeen(romId: number) {
+  if (seen.has(romId)) return;
+  seen.set(romId, Date.now());
+  try {
+    const keep = [...seen].filter(([, at]) => Date.now() - at < NEW_FOR_MS * 2);
+    localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(keep)));
+  } catch {
+    /* tant pis : le badge reviendra jusqu'à la fin de la journée */
+  }
+}
+
+export const isNewGame = (g: CatGame) => !!g.new && !seen.has(g.id);
+
+/** Le jeu passe-t-il le filtre (matchesKind du launcher) ? */
+export function matchesKind(g: CatGame, kind: CatKind): boolean {
+  if (kind === "all") return true;
+  if (kind === "installed") return g.installed || !!state.progress[g.id];
+  return !!g.modes?.[kind];
+}
+
+export function setKind(kind: CatKind) {
+  state.kind = kind;
+  changed();
+}
+
+/** Filtre suivant / précédent (L2 / R2), en boucle. */
+export function stepKind(delta: number) {
+  setKind(CAT_KINDS[(CAT_KINDS.indexOf(state.kind) + delta + CAT_KINDS.length) % CAT_KINDS.length]);
+}
+
+/**
+ * Badge d'un jeu dans une liste, mêmes règles que les cartes du launcher (Library.tsx :
+ * Installation… > Mise à jour disponible > Installé > comment y jouer, playBadge).
+ */
+export function gameBadge(g: CatGame): string | undefined {
+  if (state.progress[g.id]) return ct("badgeInstalling");
+  if (g.update) return ct("badgeUpdate");
+  if (g.installed) return ct("badgeInstalled");
+  // Moteur d'avant les badges : rien de plus à dire.
+  if (!g.modes) return undefined;
+  if (g.pc) return g.available === false && g.detailsLoaded ? ct("badgeUnavailable") : undefined;
+  if (g.modes.recomp && g.modes.emulation) return ct("badgeRecompEmu");
+  if (g.modes.recomp) return ct("badgeRecomp");
+  if (g.modes.emulation) return ct("badgeEmu");
+  if (g.recomp) return ct("badgeUnavailable");
+  return ct("badgeNoEmu");
+}
+
 /** Abonnement React à l'état du Catalogue. */
 export function useCatalogue(): CatState {
   const [, setRev] = useState(0);
@@ -664,6 +783,7 @@ export function setOpenList(key: string | null) {
 /** Ouvre la page d'un jeu (null : retour à la liste). */
 export function setOpenGame(romId: number | null) {
   state.openGame = romId;
+  if (romId != null) markSeen(romId);
   state.history = null;
   changed();
   if (romId != null) {

@@ -25,6 +25,7 @@ import {
   pickVersion,
   setLanguage,
   setOpenGame,
+  toggleFavorite,
   syncGame,
   uninstall,
   useWay,
@@ -341,14 +342,14 @@ function savesDetail(cat: CatState, romId: number, row?: string): ReactNode {
 
 // ───────────── La page ─────────────
 
-type PageItem = "play" | "info" | "install" | "language" | "saves" | "news" | "media" | "ranking" | "steam" | "uninstall";
+type PageItem = "play" | "info" | "favorite" | "install" | "language" | "saves" | "news" | "media" | "ranking" | "steam" | "uninstall";
 
 /** Entrées du menu du jeu, dans l'ordre de la page Steam : l'action d'abord, la page Steam à la fin. */
 function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
   const d = fullDetails(cat, romId);
   const sheet = cat.sheets[romId];
   const installed = isInstalled(cat, romId, game);
-  const items: PageItem[] = ["play", "info", "install"];
+  const items: PageItem[] = ["play", "info", "favorite", "install"];
   if (cat.languages[romId]?.language) items.push("language");
   if (d?.installed?.executable) items.push("saves");
   if (typeof sheet === "object" && sheet.changelog) items.push("news");
@@ -360,6 +361,7 @@ function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
 
 const ITEM_LABEL: Record<Exclude<PageItem, "play">, CatKey> = {
   info: "pageInfo",
+  favorite: "pageFavorite",
   install: "pageInstall",
   language: "pageLanguage",
   saves: "pageSaves",
@@ -509,6 +511,15 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
         </div>
       );
     }
+    case "favorite":
+      return (
+        <NierGameDetail
+          image={hasBox(box) ? [] : heroImages(cat, romId, game)}
+          visual={hasBox(box) ? <CatBoxArt key={romId} source={box} page /> : undefined}
+          fields={[{ label: ct("pageFavorite"), value: cat.favorites.has(romId) ? "★" : "—" }]}
+          description={ct(cat.favorites.has(romId) ? "pageFavoriteOn" : "pageFavoriteOff")}
+        />
+      );
     case "install":
       return installDetail(cat, romId, row);
     case "language":
@@ -590,7 +601,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
       (i): NierMenuItem => ({
         id: i,
         label: itemLabel(cat, romId, game, i),
-        badge: i === "play" && cat.progress[romId] ? "↓" : undefined,
+        badge: i === "play" && cat.progress[romId] ? "↓" : i === "favorite" && cat.favorites.has(romId) ? "★" : undefined,
       }),
     ),
     detail: (id, row) => {
@@ -598,8 +609,19 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
       return { title: item === "play" ? name : itemLabel(cat, romId, game, item), content: pageDetail(cat, romId, game, item, row) };
     },
     activate: (id) => {
-      if (asItem(id) === "play") playActivate(cat, romId, game);
+      const item = asItem(id);
+      if (item === "play") playActivate(cat, romId, game);
+      else if (item === "favorite") {
+        playSfx(cat.favorites.has(romId) ? "toggleOff" : "toggleOn");
+        void toggleFavorite(romId, name);
+      }
     },
+    // X : favori, depuis n'importe quelle entrée de la page.
+    secondary: () => {
+      playSfx(cat.favorites.has(romId) ? "toggleOff" : "toggleOn");
+      void toggleFavorite(romId, name);
+    },
+    secondaryHint: () => ct(cat.favorites.has(romId) ? "favoriteRemove" : "favoriteAdd"),
     panel: (id) => {
       const item = asItem(id);
       const rows = rowsOf(cat, romId, game, item);
@@ -616,6 +638,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
     },
     hint: (id) => {
       const item = asItem(id);
+      if (item === "favorite") return ct(cat.favorites.has(romId) ? "favoriteRemove" : "favoriteAdd");
       if (item === "play") {
         const p = cat.progress[romId];
         if (p) return p.phase === "cancel" ? undefined : ct("hintCancel");

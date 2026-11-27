@@ -299,10 +299,21 @@ export function LauncherPage() {
         return true;
       case "prevSub":
       case "nextSub": {
+        if (catGame) return false;
         // Onglet Steam : Bibliothèque | Collections (la sélection de chacun est gardée).
-        if (catGame || tabId !== "steam") return false;
+        if (tabId === "steam") {
+          playSfx("tab");
+          setSteamSub(STEAM_SUBS[stepIndex(STEAM_SUBS.indexOf(steamSub), action === "prevSub" ? -1 : 1, STEAM_SUBS.length, true)]);
+          return true;
+        }
+        // Autre barre au-dessus de la liste (filtres du Catalogue).
+        if (!view.sub) return false;
         playSfx("tab");
-        setSteamSub(STEAM_SUBS[stepIndex(STEAM_SUBS.indexOf(steamSub), action === "prevSub" ? -1 : 1, STEAM_SUBS.length, true)]);
+        view.sub.step(action === "prevSub" ? -1 : 1);
+        return true;
+      }
+      case "secondary": {
+        if (current && view.secondary) view.secondary(current.id);
         return true;
       }
       case "prevTab":
@@ -326,9 +337,19 @@ export function LauncherPage() {
         }
         return view.back?.() ?? false; // sur l'accueil, Steam garde la main
       case "left":
-      case "right":
-        if (current) view.adjust?.(current.id, action === "left" ? -1 : 1);
+      case "right": {
+        if (!current) return true;
+        if (view.jump) {
+          const id = view.jump(current.id, action === "left" ? -1 : 1);
+          if (id && id !== current.id) {
+            playSfx("move");
+            setItemId(id);
+          }
+          return true;
+        }
+        view.adjust?.(current.id, action === "left" ? -1 : 1);
         return true;
+      }
       default:
         return true;
     }
@@ -362,7 +383,9 @@ export function LauncherPage() {
         onTabChange={setTabId}
         status={<NierStatus time={time} battery={battery} />}
         menuTitle={listView.menuTitle}
-        subTabs={tabId === "steam" ? { labels: [t("tabLibrary"), t("tabCollections")], active: STEAM_SUBS.indexOf(steamSub) } : undefined}
+        subTabs={
+          tabId === "steam" ? { labels: [t("tabLibrary"), t("tabCollections")], active: STEAM_SUBS.indexOf(steamSub) } : view.sub ? { labels: view.sub.labels, active: view.sub.active } : undefined
+        }
         menuItems={listView.items}
         activeItemId={listCurrent?.id}
         onItemSelect={catGame ? () => {} : setItemId}
@@ -376,7 +399,9 @@ export function LauncherPage() {
           ) : (
             <>
               <NierHint button={["L1", "R1"]} label={t("tabs")} />
-              {tabId === "steam" && <NierHint button={["L2", "R2"]} label={t("subTabs")} />}
+              {tabId === "steam" ? <NierHint button={["L2", "R2"]} label={t("subTabs")} /> : view.sub && <NierHint button={["L2", "R2"]} label={view.sub.hint} />}
+              {listView.jump && listView.jumpHint && <NierHint button="LEFTRIGHT" label={listView.jumpHint} />}
+              {listCurrent && listView.secondaryHint?.(listCurrent.id) && <NierHint button="X" label={listView.secondaryHint(listCurrent.id)!} />}
               {listCurrent && listView.adjustable?.(listCurrent.id) && <NierHint button="LEFTRIGHT" label={t("adjust")} />}
               {listHint && <NierHint button="A" label={listHint} />}
               {listView.back && <NierHint button="B" label={t("back")} />}
@@ -406,6 +431,7 @@ export function LauncherPage() {
                 panelFooter
               ) : (
                 <>
+                  {current && catGame.secondaryHint?.(current.id) && <NierHint button="X" label={catGame.secondaryHint(current.id)!} />}
                   {hint && <NierHint button="A" label={hint} />}
                   <NierHint button="B" label={t("back")} />
                 </>

@@ -11,7 +11,26 @@ import { ct, type CatKey } from "./i18n";
 import { promptText } from "./prompt";
 import { CatBoxArt, hasBox } from "./boxArt";
 import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
-import { configure, imageUrl, loadConsoles, loadDetails, logout, setOpenGame, setOpenList, syncSaves, updateEngine, type CatGame, type catalogueState } from "./store";
+import {
+  CAT_KINDS,
+  configure,
+  gameBadge,
+  imageUrl,
+  isNewGame,
+  loadConsoles,
+  loadDetails,
+  logout,
+  matchesKind,
+  setOpenGame,
+  setOpenList,
+  stepKind,
+  syncSaves,
+  toggleFavorite,
+  updateEngine,
+  type CatGame,
+  type CatKind,
+  type catalogueState,
+} from "./store";
 
 type CatState = ReturnType<typeof catalogueState>;
 
@@ -36,6 +55,7 @@ function wantDetails(cat: CatState, romId: number) {
 
 const listTitle = (cat: CatState, key: string) => {
   if (key === "installed") return ct("installed");
+  if (key === "favorites") return ct("favorites");
   if (key.startsWith("search:")) return ct("searchResults", { term: key.slice(7) });
   const id = Number(key.slice(8));
   return id === -1 ? ct("recomps") : (cat.consoles?.find((c) => c.id === id)?.name ?? ct("games"));
@@ -48,7 +68,7 @@ function gamePreview(cat: CatState, romId: number, game: CatGame | undefined): R
   const box = { boxFaces: d?.game?.boxFaces ?? game?.boxFaces, box3dUrl: d?.game?.box3dUrl ?? game?.box3dUrl, coverUrl: d?.game?.coverUrl ?? game?.coverUrl };
   // Avec une boîte, la jaquette à plat n'est pas téléchargée.
   const local = hasBox(box) ? undefined : imageUrl(box.coverUrl);
-  const status = progress ? ct("statusInstalling") : isInstalled(cat, romId, game) ? ct("statusInstalled") : ct("statusNotInstalled");
+  const status = game && gameBadge(game) ? gameBadge(game)! : progress ? ct("statusInstalling") : isInstalled(cat, romId, game) ? ct("statusInstalled") : ct("statusNotInstalled");
   const failed = cat.details[romId];
   const error = failed && typeof failed === "object" && "error" in failed ? failed.error : undefined;
   return (
@@ -94,22 +114,58 @@ export function catalogueView(cat: CatState): TabView {
   const open = cat.openList;
   if (open) {
     const list = cat.lists[open];
-    const games = list?.games ?? [];
+    // Filtre de la liste (Tous / Installés / Recomp / Émulation), comme la bibliothèque du launcher.
+    const games = (list?.games ?? []).filter((g) => matchesKind(g, cat.kind));
     const find = (id?: string) => games.find((g) => `g:${g.id}` === id);
     return {
-      menuTitle: `${listTitle(cat, open)}${games.length ? ` · ${games.length}` : ""}`,
-      items: games.map(
-        (g): NierMenuItem => ({
+      menuTitle: `${listTitle(cat, open)}${games.length ? ` · ${games.length}` : ""}${list?.loading && games.length ? " …" : ""}`,
+      items: games.map((g): NierMenuItem => {
+        const badge = gameBadge(g) ?? (g.installed ? "✓" : undefined);
+        const fresh = isNewGame(g);
+        return {
           id: `g:${g.id}`,
-          label: g.name,
-          badge: cat.progress[g.id] ? "↓" : g.installed ? "✓" : undefined,
+          label: `${cat.favorites.has(g.id) ? "★ " : ""}${g.name}`,
+          badge: fresh ? (badge ? `${ct("badgeNew")} · ${badge}` : ct("badgeNew")) : badge,
           muted: !g.installed && !cat.progress[g.id],
-        }),
-      ),
+        };
+      }),
+      sub: {
+        labels: CAT_KINDS.map((k) => ct(KIND_LABEL[k])),
+        active: CAT_KINDS.indexOf(cat.kind),
+        step: (delta) => stepKind(delta),
+        hint: ct("filterHint"),
+      },
+      // ← → : lettre précédente / suivante (« # » : chiffres et autres alphabets).
+      jump: (id, delta) => {
+        const g = find(id);
+        if (!g || !games.length) return undefined;
+        const present = LETTERS.filter((l) => games.some((x) => letterOf(x.name) === l));
+        const at = present.indexOf(letterOf(g.name));
+        const next = present[(at + delta + present.length) % present.length];
+        const target = games.find((x) => letterOf(x.name) === next);
+        return target ? `g:${target.id}` : undefined;
+      },
+      jumpHint: ct("letterHint"),
+      secondary: (id) => {
+        const g = find(id);
+        if (!g) return;
+        playSfx(cat.favorites.has(g.id) ? "toggleOff" : "toggleOn");
+        void toggleFavorite(g.id, g.name);
+      },
+      secondaryHint: (id) => {
+        const g = find(id);
+        return g ? ct(cat.favorites.has(g.id) ? "favoriteRemove" : "favoriteAdd") : undefined;
+      },
       detail: (id) => {
         const game = find(id);
         if (!game) {
-          const msg = list?.loading ? ct("loading") : list?.error ? ct("error", { error: list.error }) : ct("empty");
+          const msg = list?.loading
+            ? ct("loading")
+            : list?.error
+              ? ct("error", { error: list.error })
+              : cat.kind !== "all" && list?.games.length
+                ? ct("emptyKind", { kind: ct(KIND_LABEL[cat.kind]) })
+                : ct("empty");
           return { title: listTitle(cat, open), content: <NierGameDetail art={false} description={msg} /> };
         }
         wantDetails(cat, game.id);
@@ -134,6 +190,7 @@ export function catalogueView(cat: CatState): TabView {
   const items: NierMenuItem[] = [
     { id: "search", label: ct("search") },
     { id: "installed", label: ct("installed"), badge: cat.status?.data?.installed ? String(cat.status.data.installed) : undefined },
+    { id: "favorites", label: ct("favorites"), badge: cat.favorites.size ? String(cat.favorites.size) : undefined },
     ...consoles.map((c) => ({ id: `console:${c.id}`, label: c.id === -1 ? ct("recomps") : c.name, badge: String(c.romCount) })),
   ];
   return {
@@ -142,6 +199,7 @@ export function catalogueView(cat: CatState): TabView {
     detail: (id) => {
       if (id === "search") return { title: ct("search"), content: <NierGameDetail art={false} description={ct("searchDesc")} /> };
       if (id === "installed") return { title: ct("installed"), content: <NierGameDetail art={false} description={ct("installedDesc")} /> };
+      if (id === "favorites") return { title: ct("favorites"), content: <NierGameDetail art={false} description={ct("favoritesDesc")} /> };
       const c = consoles.find((x) => `console:${x.id}` === id);
       if (!c) {
         const msg = cat.consolesError ? ct("error", { error: cat.consolesError }) : cat.consoles ? ct("noConsoles") : ct("loading");
@@ -162,6 +220,16 @@ export function catalogueView(cat: CatState): TabView {
     },
     hint: () => ct("actions"),
   };
+}
+
+const KIND_LABEL: Record<CatKind, CatKey> = { all: "kindAll", installed: "kindInstalled", recomp: "kindRecomp", emulation: "kindEmu" };
+
+const LETTERS = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+
+/** Lettre d'un nom (letterOf du launcher) : sa première lettre sans accent, sinon « # ». */
+function letterOf(name: string): string {
+  const c = name.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").charAt(0).toUpperCase();
+  return c >= "A" && c <= "Z" ? c : "#";
 }
 
 // ───────────── Système → FarfaLauncher ─────────────

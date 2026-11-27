@@ -30,4 +30,12 @@ export interface TabView {
   adjustable?: (id: string) => boolean;
   /** Item dont la zone de droite est une liste de choix : A y entre, haut/bas choisit, B en sort. */
   panel?: (id: string) => PanelDef | undefined;
+  /** Barre au-dessus de la liste (filtres…), changée avec L2 / R2. */
+  sub?: { labels: string[]; active: number; step: (delta: number) => void; hint: string };
+  /** Gauche / droite saute dans la liste (lettre précédente / suivante) : id à sélectionner. */
+  jump?: (id: string, delta: number) => string | undefined;
+  jumpHint?: string;
+  /** X sur l'item sélectionné (favori…). */
+  secondary?: (id: string) => void;
+  secondaryHint?: (id: string) => string | undefined;
 }
