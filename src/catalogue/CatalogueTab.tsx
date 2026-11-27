@@ -154,7 +154,8 @@ export function catalogueView(cat: CatState): TabView {
       },
       secondaryHint: (id) => {
         const g = find(id);
-        return g ? ct(cat.favorites.has(g.id) ? "favoriteRemove" : "favoriteAdd") : undefined;
+        // Court, le pied de page est plein ; l'étoile et la notification disent l'état.
+        return g ? ct("favoriteAdd") : undefined;
       },
       detail: (id) => {
         const game = find(id);
@@ -177,7 +178,8 @@ export function catalogueView(cat: CatState): TabView {
         playSfx("confirm");
         setOpenGame(game.id);
       },
-      hint: (id) => (find(id) ? ct("openGame") : undefined),
+      // Pas de « A Ouvrir » : le pied de page manque de place (filtre, lettre, favori).
+      hint: () => undefined,
       back: () => {
         playSfx("back");
         setOpenList(null);
