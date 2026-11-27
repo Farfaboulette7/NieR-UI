@@ -6,11 +6,13 @@ A [Decky Loader](https://decky.xyz) plugin for the Steam Deck: a game launcher f
 
 ## Features
 
-- **Launcher** in place of the Steam home screen, with five tabs:
-  - **Library**: installed games, with playtime (non-Steam games included), last session and size.
-  - **Recent**: the last 30 games played.
-  - **Collections**: your Steam collections, favorites first.
-  - **Store**: your Steam wishlist, with prices and discounts. A opens the game's Store page.
+- **Launcher** in place of the Steam home screen, with these tabs (L1 / R1):
+  - **Recent**: the last 20 games launched; where they come from (Steam, FarfaLauncher or another shortcut) is shown at the bottom right of the artwork.
+  - **Steam**, in two sub-tabs (L2 / R2):
+    - **Library**: installed games, with playtime (non-Steam games included), last session and size;
+    - **Collections**: your Steam collections, favorites first.
+  - **Farfa project**: the catalogue of FarfaLauncher's RomM server (once a server is set).
+  - **Music**: background music (on / off, shuffle, volume) and the track list.
   - **System**: the plugin settings (see below).
 - **NieR game page** in place of Steam's. It slides in from the right over the launcher, and slides out on B:
   - Play / Install;
@@ -48,13 +50,10 @@ NieR:Automata's sound effects and soundtrack belong to Square Enix / PlatinumGam
 | Sound effects: Audio Loader's NieR / YoRHa pack | `~/homebrew/sounds/` (installed by Audio Loader) |
 | Background music: any `.mp3`, `.ogg`, `.flac`… (subfolders allowed) | `~/Music/NieRDeck/` (created at first launch) |
 
-Then, in **System**:
+Then:
 
-- **Now playing** opens a panel to:
-  - turn the music on or off;
-  - switch shuffle on or off (otherwise tracks play in album order);
-  - pick a track.
-- **Sound effects volume** and **Music volume** are adjusted with ← →.
+- the **Music** tab: turn the music on or off, shuffle (otherwise tracks follow the album order), the volume (← →), and the track list (A plays one);
+- **System → Volume**: the sound effects volume (← →).
 
 ## Catalogue (FarfaLauncher)
 

@@ -27,6 +27,19 @@ export const NIER_DETAIL_CSS = `
 .nier-game-art-image {
   object-fit: contain;
 }
+/* Étiquette en bas à droite du visuel (provenance d'un jeu…). */
+.nier-game-art-tag {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  padding: 3px 10px;
+  font-size: 14px;
+  letter-spacing: var(--nier-tracking-wide);
+  color: var(--nier-high);
+  background: var(--nier-low);
+  box-shadow: 0 0 0 1px var(--nier-high-trans);
+}
 .nier-game-art-backdrop {
   object-fit: cover;
   transform: scale(1.15);

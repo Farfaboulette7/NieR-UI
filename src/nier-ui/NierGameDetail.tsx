@@ -9,6 +9,8 @@ export interface NierGameDetailProps {
   /** URL(s) du visuel, essayées dans l'ordre ; sans visuel valide, un cadre hachuré s'affiche. */
   image?: string | string[];
   imageAlt?: string;
+  /** Petite étiquette en bas à droite du visuel (provenance d'un jeu…). */
+  imageTag?: string;
   /** false : pas de cadre d'image du tout (réglages, textes). */
   art?: boolean;
   /** Cadre d'image moins haut, pour laisser la place aux actions. */
@@ -22,7 +24,7 @@ export interface NierGameDetailProps {
 }
 
 /** Contenu type de la zone de droite. Les styles viennent de <NierStyles />. */
-export function NierGameDetail({ image, imageAlt = "", art = true, compact = false, actions, fields = [], description, visual }: NierGameDetailProps) {
+export function NierGameDetail({ image, imageAlt = "", imageTag, art = true, compact = false, actions, fields = [], description, visual }: NierGameDetailProps) {
   const images = image ? (Array.isArray(image) ? image : [image]) : [];
   // Index de l'image en cours ; on passe à la suivante si elle ne charge pas.
   const [attempt, setAttempt] = useState({ key: images.join("|"), index: 0 });
@@ -44,6 +46,7 @@ export function NierGameDetail({ image, imageAlt = "", art = true, compact = fal
               {/* Image entière dans le cadre, sur un fond flou d'elle-même (bannière, jaquette verticale…). */}
               <img className="nier-game-art-backdrop" src={src} alt="" aria-hidden="true" />
               <img className="nier-game-art-image" src={src} alt={imageAlt} onError={() => setAttempt({ key, index: index + 1 })} />
+              {imageTag && <span className="nier-game-art-tag">{imageTag}</span>}
             </>
           ) : (
             "No visual data"

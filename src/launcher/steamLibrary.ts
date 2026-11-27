@@ -376,11 +376,6 @@ export function useSteamLibrary(refreshMs = 5000): SteamLibrary {
   return library;
 }
 
-/** Ouvre la page d'un jeu dans le Magasin Steam. */
-export function openStorePage(appid: number) {
-  Navigation.NavigateToSteamWeb(`https://store.steampowered.com/app/${appid}/`);
-}
-
 /** Ouvre la page du jeu (la page NieR si elle remplace celle de Steam). */
 export function openGamePage(game: SteamGame) {
   Navigation.Navigate(`/library/app/${game.appid}`);

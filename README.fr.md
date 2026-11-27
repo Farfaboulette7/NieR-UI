@@ -6,11 +6,13 @@ Plugin [Decky Loader](https://decky.xyz) pour Steam Deck : un launcher de jeux p
 
 ## Fonctionnalités
 
-- **Launcher** à la place de l'accueil Steam, avec cinq onglets :
-  - **Bibliothèque** : les jeux installés, avec le temps de jeu (jeux non-Steam compris), la dernière session et la taille.
-  - **Récents** : les 30 derniers jeux joués.
-  - **Collections** : tes collections Steam, favoris en tête.
-  - **Boutique** : ta liste de souhaits Steam, avec prix et réductions. A ouvre la page du jeu dans le Magasin.
+- **Launcher** à la place de l'accueil Steam, avec ces onglets (L1 / R1) :
+  - **Récents** : les 20 derniers jeux lancés ; leur provenance (Steam, FarfaLauncher ou autre raccourci) est en bas à droite de l'affiche.
+  - **Steam**, en deux sous-onglets (L2 / R2) :
+    - **Bibliothèque** : les jeux installés, avec le temps de jeu (jeux non-Steam compris), la dernière session et la taille ;
+    - **Collections** : tes collections Steam, favoris en tête.
+  - **Farfa project** : le catalogue du serveur RomM de FarfaLauncher (quand un serveur est réglé).
+  - **Musique** : les musiques de fond (marche / arrêt, aléatoire, volume) et la liste des morceaux.
   - **Système** : les réglages du plugin (voir plus bas).
 - **Page de jeu NieR** à la place de celle de Steam. Elle glisse depuis la droite par-dessus le launcher, et repart avec B :
   - Jouer / Installer ;
@@ -48,13 +50,10 @@ Les bruitages et la bande originale de NieR:Automata appartiennent à Square Eni
 | Bruitages : le pack NieR / YoRHa d'Audio Loader | `~/homebrew/sounds/` (installé par Audio Loader) |
 | Musique de fond : des `.mp3`, `.ogg`, `.flac`… (sous-dossiers acceptés) | `~/Music/NieRDeck/` (créé au premier lancement) |
 
-Ensuite, dans **Système** :
+Ensuite :
 
-- **Musique en cours** ouvre un panneau pour :
-  - activer ou couper la musique ;
-  - activer ou couper la lecture aléatoire (sinon, les morceaux suivent l'ordre de l'album) ;
-  - choisir un morceau.
-- **Volume des bruitages** et **Volume de la musique** se règlent avec ← →.
+- l'onglet **Musique** : allumer ou couper la musique, la lecture aléatoire (sinon les morceaux suivent l'ordre de l'album), le volume (← →), et la liste des morceaux (A en joue un) ;
+- **Système → Volume** : le volume des bruitages (← →).
 
 ## Catalogue (FarfaLauncher)
 

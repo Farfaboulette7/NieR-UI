@@ -368,7 +368,12 @@ export interface NowPlaying {
   duration: number;
 }
 
-/** Morceau en cours, rafraîchi deux fois par seconde (onglet Système, pied de page). */
+/** Identifiant du morceau en cours (null : aucun). */
+export function currentTrackId(): string | null {
+  return track?.id ?? null;
+}
+
+/** Morceau en cours, rafraîchi deux fois par seconde (onglet Musique, pied de page). */
 export function useNowPlaying(enabled: boolean): NowPlaying {
   const read = (): NowPlaying => ({
     track,
