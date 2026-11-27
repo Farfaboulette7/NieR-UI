@@ -25,7 +25,7 @@ export const NIER_BOX_CSS = `
   will-change: transform;
 }
 /* Rotation automatique (NierBoxArt) : animations CSS, sans JavaScript à chaque image.
-   Tour complet à 10,8°/s comme le launcher ; sans dos, oscillation face ↔ tranche. */
+   Tour complet à 21,6°/s (deux fois le launcher, demandé pour le Deck) ; sans dos, oscillation face ↔ tranche. */
 @keyframes nier-b3-spin {
   from { transform: rotateX(-8deg) rotateY(28deg); }
   to { transform: rotateX(-8deg) rotateY(388deg); }
@@ -34,8 +34,8 @@ export const NIER_BOX_CSS = `
   from { transform: rotateX(-8deg) rotateY(2deg); }
   to { transform: rotateX(-8deg) rotateY(54deg); }
 }
-.nier-b3-stage[data-anim="spin"] { animation: nier-b3-spin 33.33s linear infinite; }
-.nier-b3-stage[data-anim="swing"] { animation: nier-b3-swing 4.5s ease-in-out infinite alternate; }
+.nier-b3-stage[data-anim="spin"] { animation: nier-b3-spin 16.67s linear infinite; }
+.nier-b3-stage[data-anim="swing"] { animation: nier-b3-swing 3s ease-in-out infinite alternate; }
 .nier-b3-face {
   position: absolute;
   /* Préfixe indispensable sous WebKit et le CEF de Steam : sinon le dos, peint en

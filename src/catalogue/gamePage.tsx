@@ -451,6 +451,8 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
   const error = failed && typeof failed === "object" && "error" in failed ? failed.error : undefined;
   if (error) return <NierGameDetail image={heroImages(cat, romId, game)} description={ct("error", { error })} />;
   const cover = imageUrl(g?.coverUrl ?? game?.coverUrl);
+  // Boîte 3D comme sur la fiche du launcher (Jouer / Installer et Informations).
+  const box = { boxFaces: g?.boxFaces ?? game?.boxFaces, box3dUrl: g?.box3dUrl ?? game?.box3dUrl, coverUrl: g?.coverUrl ?? game?.coverUrl };
   const playtime =
     sheet === "loading" || (!sh && !d) ? "…" : !sh || sh.playtimeMs == null ? ct("unavailable") : sh.playtimeMs === 0 ? ct("neverPlayed") : formatPlaytime(sh.playtimeMs);
   switch (item) {
@@ -469,8 +471,9 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
       return (
         <div>
           <NierGameDetail
-            image={heroImages(cat, romId, game)}
+            image={hasBox(box) ? [] : heroImages(cat, romId, game)}
             imageAlt={g?.name ?? game?.name}
+            visual={hasBox(box) ? <CatBoxArt key={romId} source={box} page /> : undefined}
             actions={
               <>
                 {progressMeter(cat, romId)}
@@ -491,8 +494,7 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
       if (g?.genres?.length) fields.push({ label: ct("fGenres"), value: g.genres.join(", ") });
       fields.push({ label: ct("kind"), value: kindLabel(game, d) });
       if (sh?.rommPage) fields.push({ label: ct("fSources"), value: `${ct("rommPage")} · ${sh.rommPage}` });
-      // Boîte 3D comme sur la fiche du launcher ; sans boîte, les captures puis la jaquette.
-      const box = { boxFaces: g?.boxFaces ?? game?.boxFaces, box3dUrl: g?.box3dUrl ?? game?.box3dUrl, coverUrl: g?.coverUrl ?? game?.coverUrl };
+      // Sans boîte : les captures puis la jaquette.
       const withBox = hasBox(box);
       const images = withBox ? [] : ([...(g?.screenshotUrls ?? []).map((u: string) => imageUrl(u)), cover].filter(Boolean) as string[]);
       return (

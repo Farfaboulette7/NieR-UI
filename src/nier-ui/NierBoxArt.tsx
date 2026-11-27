@@ -17,20 +17,19 @@ export interface NierBoxArtProps {
   autoSpin?: boolean;
   /** Page du jeu : la boîte doit tenir quel que soit l'angle (sa diagonale). */
   interactive?: boolean;
-  /** Lu à chaque image : position du stick (-1…1), ou null s'il est au repos. */
-  input?: () => { x: number; y: number } | null;
+  /** Lu à chaque image : rotation demandée (degrés) depuis la lecture précédente, ou null. */
+  input?: () => { dry: number; drx: number } | null;
 }
 
 /** Angle de présentation : la tranche (côté gauche) bien visible. */
 const REST = { rx: -8, ry: 28 };
-/** Rotation automatique, comme RomM et le launcher (0,18° par image à 60 i/s). */
-const AUTO_SPIN_DEG_PER_S = 0.18 * 60;
-/** Stick poussé à fond : degrés par seconde. */
-const STICK_DEG_PER_S = { ry: 200, rx: 90 };
+/** Rotation automatique : deux fois celle du launcher (0,36° par image à 60 i/s). Doit suivre
+ *  la durée de l'animation `nier-b3-spin` (boxStyles.ts). */
+const AUTO_SPIN_DEG_PER_S = 0.36 * 60;
 /** Pause de la rotation automatique après une manipulation. */
 const IDLE_RESUME_MS = 2000;
-/** Zone morte du stick. */
-const DEAD = 0.15;
+/** Mouvement minimal (degrés par image) pris en compte. */
+const DEAD = 0.01;
 
 export function NierBoxArt({ visual, autoSpin = false, interactive = false, input }: NierBoxArtProps) {
   if (visual.kind === "box") return <Box3D {...visual} autoSpin={autoSpin} interactive={interactive} input={input} />;
@@ -69,7 +68,7 @@ interface Box3DProps {
   back?: string | null;
   autoSpin: boolean;
   interactive: boolean;
-  input?: () => { x: number; y: number } | null;
+  input?: () => { dry: number; drx: number } | null;
 }
 
 function Box3D({ front, side, back, autoSpin, interactive, input }: Box3DProps) {
@@ -127,21 +126,17 @@ function Box3D({ front, side, back, autoSpin, interactive, input }: Box3DProps) 
     startAnim();
     if (!input) return () => void (el.dataset.anim = "");
     let raf = 0;
-    let prev = performance.now();
     let lastInput = 0;
     let manual = false;
     const tick = (now: number) => {
-      // Borné : un écran revenu au premier plan ne fait pas un bond.
-      const dt = Math.min(now - prev, 50) / 1000;
-      prev = now;
       const s = inputRef.current?.();
-      if (s && (Math.abs(s.x) > DEAD || Math.abs(s.y) > DEAD)) {
+      if (s && (Math.abs(s.dry) > DEAD || Math.abs(s.drx) > DEAD)) {
         if (!manual) stopAnim();
         manual = true;
         lastInput = now;
         const a = angle.current;
-        a.ry += s.x * STICK_DEG_PER_S.ry * dt;
-        a.rx = Math.max(-35, Math.min(35, a.rx - s.y * STICK_DEG_PER_S.rx * dt));
+        a.ry += s.dry;
+        a.rx = Math.max(-35, Math.min(35, a.rx + s.drx));
         apply();
       } else if (manual && now - lastInput > IDLE_RESUME_MS) {
         manual = false;
