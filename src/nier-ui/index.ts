@@ -1,6 +1,9 @@
 export { NierLayout, NierStyles } from "./NierLayout";
 export type { NierLayoutProps, NierTab, NierMenuItem } from "./NierLayout";
 export { NierGameDetail } from "./NierGameDetail";
+export { NierBoxArt } from "./NierBoxArt";
+export type { NierBoxArtProps, NierBoxVisual } from "./NierBoxArt";
+export { NIER_BOX_CSS } from "./boxStyles";
 export type { NierGameDetailProps, NierField } from "./NierGameDetail";
 export { NierAchievementList } from "./NierAchievementList";
 export { NierPeopleList } from "./NierPeopleList";

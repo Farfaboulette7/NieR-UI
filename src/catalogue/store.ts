@@ -40,6 +40,10 @@ export interface CatGame {
   name: string;
   console: string;
   coverUrl: string | null;
+  /** Faces de la boîte (RomM) : boîte 3D comme dans le launcher. */
+  boxFaces?: { front: string; side: string; back: string | null } | null;
+  /** Boîte 3D détourée (RomM), repli sans faces. */
+  box3dUrl?: string | null;
   releaseYear: number | null;
   recomp: boolean;
   pc: boolean;
@@ -490,6 +494,14 @@ export async function pickVersion(romId: number, version: string) {
     state.history = { ...h, confirm: null };
     changed();
   }
+}
+
+/** Image du serveur : `loading` pendant le téléchargement, null si elle n'existe pas. */
+export function imageState(url: string | null | undefined): string | null | "loading" {
+  if (!url) return null;
+  imageUrl(url);
+  const cur = state.images[url];
+  return cur === undefined || cur === "loading" ? "loading" : cur;
 }
 
 /** Image du serveur, servie en local (null : pas d'image). */

@@ -11,6 +11,7 @@ import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
 import { t } from "../launcher/i18n";
 import { shortcutGameId } from "./shortcuts";
+import { CatBoxArt, hasBox } from "./boxArt";
 import {
   cancelInstall,
   chooseExecutable,
@@ -490,10 +491,18 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
       if (g?.genres?.length) fields.push({ label: ct("fGenres"), value: g.genres.join(", ") });
       fields.push({ label: ct("kind"), value: kindLabel(game, d) });
       if (sh?.rommPage) fields.push({ label: ct("fSources"), value: `${ct("rommPage")} · ${sh.rommPage}` });
-      const images = [...(g?.screenshotUrls ?? []).map((u: string) => imageUrl(u)), cover].filter(Boolean) as string[];
+      // Boîte 3D comme sur la fiche du launcher ; sans boîte, les captures puis la jaquette.
+      const box = { boxFaces: g?.boxFaces ?? game?.boxFaces, box3dUrl: g?.box3dUrl ?? game?.box3dUrl, coverUrl: g?.coverUrl ?? game?.coverUrl };
+      const withBox = hasBox(box);
+      const images = withBox ? [] : ([...(g?.screenshotUrls ?? []).map((u: string) => imageUrl(u)), cover].filter(Boolean) as string[]);
       return (
         <div>
-          <NierGameDetail image={images} imageAlt={g?.name ?? game?.name} fields={fields} />
+          <NierGameDetail
+            image={images}
+            imageAlt={g?.name ?? game?.name}
+            visual={withBox ? <CatBoxArt key={romId} source={box} page /> : undefined}
+            fields={fields}
+          />
           {g?.summary && <Text>{g.summary}</Text>}
         </div>
       );

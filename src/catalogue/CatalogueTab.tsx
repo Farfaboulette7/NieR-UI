@@ -9,6 +9,7 @@ import { playSfx } from "../launcher/audio";
 import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
 import { promptText } from "./prompt";
+import { CatBoxArt, hasBox } from "./boxArt";
 import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
 import { configure, imageUrl, loadConsoles, loadDetails, logout, setOpenGame, setOpenList, syncSaves, updateEngine, type CatGame, type catalogueState } from "./store";
 
@@ -44,7 +45,9 @@ const listTitle = (cat: CatState, key: string) => {
 function gamePreview(cat: CatState, romId: number, game: CatGame | undefined): ReactNode {
   const d = fullDetails(cat, romId);
   const progress = cat.progress[romId];
-  const local = imageUrl(d?.game?.coverUrl ?? game?.coverUrl);
+  const box = { boxFaces: d?.game?.boxFaces ?? game?.boxFaces, box3dUrl: d?.game?.box3dUrl ?? game?.box3dUrl, coverUrl: d?.game?.coverUrl ?? game?.coverUrl };
+  // Avec une boîte, la jaquette à plat n'est pas téléchargée.
+  const local = hasBox(box) ? undefined : imageUrl(box.coverUrl);
   const status = progress ? ct("statusInstalling") : isInstalled(cat, romId, game) ? ct("statusInstalled") : ct("statusNotInstalled");
   const failed = cat.details[romId];
   const error = failed && typeof failed === "object" && "error" in failed ? failed.error : undefined;
@@ -53,6 +56,7 @@ function gamePreview(cat: CatState, romId: number, game: CatGame | undefined): R
       <NierGameDetail
         image={local}
         imageAlt={game?.name ?? d?.game?.name}
+        visual={hasBox(box) ? <CatBoxArt key={romId} source={box} /> : undefined}
         compact
         actions={
           progress && (

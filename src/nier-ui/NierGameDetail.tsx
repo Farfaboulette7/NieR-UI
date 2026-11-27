@@ -17,10 +17,12 @@ export interface NierGameDetailProps {
   actions?: ReactNode;
   fields?: NierField[];
   description?: string;
+  /** Visuel dessiné à la place de l'image (boîte 3D : NierBoxArt), dans un cadre plus haut. */
+  visual?: ReactNode;
 }
 
 /** Contenu type de la zone de droite. Les styles viennent de <NierStyles />. */
-export function NierGameDetail({ image, imageAlt = "", art = true, compact = false, actions, fields = [], description }: NierGameDetailProps) {
+export function NierGameDetail({ image, imageAlt = "", art = true, compact = false, actions, fields = [], description, visual }: NierGameDetailProps) {
   const images = image ? (Array.isArray(image) ? image : [image]) : [];
   // Index de l'image en cours ; on passe à la suivante si elle ne charge pas.
   const [attempt, setAttempt] = useState({ key: images.join("|"), index: 0 });
@@ -30,7 +32,12 @@ export function NierGameDetail({ image, imageAlt = "", art = true, compact = fal
 
   return (
     <div className="nier-game">
-      {art && (
+      {art && visual != null && (
+        <div className="nier-game-art" data-box="true" data-compact={compact}>
+          {visual}
+        </div>
+      )}
+      {art && visual == null && (
         <div className="nier-game-art" data-empty={!src} data-compact={compact}>
           {src ? (
             <>
