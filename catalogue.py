@@ -22,8 +22,9 @@ import decky
 CLI_NAME = "FarfaLauncherDeck-linux-x86_64"
 LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
-READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique"}
-WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer"}
+READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique",
+                 "resultat", "reveil"}
+WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer", "veille"}
 TIMEOUT = 180
 # Longueur maximale d'une ligne JSON du moteur (une fiche de jeu PC peut peser plusieurs Mo).
 LINE_LIMIT = 64 * 1024 * 1024
