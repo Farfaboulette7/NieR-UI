@@ -121,6 +121,7 @@ export function catalogueView(cat: CatState): TabView {
   if (open === "friends") return friendsView();
   if (open === "stats") return statsView();
   if (open === "versions") return versionsView();
+  if (open === "platforms") return platformsView(cat);
   if (open) {
     const list = cat.lists[open];
     // Filtre de la liste (Tous / Installés / Recomp / Émulation), comme la bibliothèque du launcher.
@@ -191,7 +192,7 @@ export function catalogueView(cat: CatState): TabView {
       hint: () => undefined,
       back: () => {
         playSfx("back");
-        setOpenList(null);
+        setOpenList(open.startsWith("console:") ? "platforms" : null);
         return true;
       },
     };
@@ -207,8 +208,9 @@ export function catalogueView(cat: CatState): TabView {
     { id: "my-reports", label: ct("myReports"), badge: unreadReports() ? `● ${unreadReports()}` : undefined },
     { id: "my-requests", label: ct("myRequests"), badge: requestsCount() ? String(requestsCount()) : undefined },
     { id: "versions", label: ct("versions"), badge: newVersion() ? ct("badgeNewVersion") : cat.status?.data?.version },
-    ...consoles.map((c) => ({ id: `console:${c.id}`, label: c.id === -1 ? ct("recomps") : c.name, badge: String(c.romCount) })),
   ];
+  // Les plateformes (Recomps, consoles) sont regroupées sous « Jeux », juste après la recherche.
+  items.splice(1, 0, { id: "platforms", label: ct("platforms"), badge: consoles.length ? String(consoles.length) : undefined });
   return {
     menuTitle: ct("rootTitle"),
     items,
@@ -216,6 +218,10 @@ export function catalogueView(cat: CatState): TabView {
       if (id === "search") return { title: ct("search"), content: <NierGameDetail art={false} description={ct("searchDesc")} /> };
       if (id === "installed") return { title: ct("installed"), content: <NierGameDetail art={false} description={ct("installedDesc")} /> };
       if (id === "favorites") return { title: ct("favorites"), content: <NierGameDetail art={false} description={ct("favoritesDesc")} /> };
+      if (id === "platforms") {
+        const msg = cat.consolesError ? ct("error", { error: cat.consolesError }) : cat.consoles ? ct("platformsDesc", { n: consoles.filter((c) => c.id !== -1).length }) : ct("loading");
+        return { title: ct("platforms"), content: <NierGameDetail art={false} description={msg} /> };
+      }
       if (id === "friends") return { title: ct("friends"), content: <NierGameDetail art={false} description={ct("friendsDesc")} /> };
       if (id === "stats") return { title: ct("stats"), content: <NierGameDetail art={false} description={ct("statsDesc")} /> };
       if (id === "versions") return { title: ct("versions"), content: <NierGameDetail art={false} description={ct("versionsDesc")} /> };
@@ -240,6 +246,36 @@ export function catalogueView(cat: CatState): TabView {
       }
     },
     hint: () => ct("actions"),
+  };
+}
+
+/** « Jeux » : les plateformes (Recomps, puis les consoles) ; A ouvre la liste de leurs jeux. */
+function platformsView(cat: CatState): TabView {
+  const consoles = cat.consoles ?? [];
+  return {
+    menuTitle: ct("platforms"),
+    items: consoles.map((c) => ({ id: `console:${c.id}`, label: c.id === -1 ? ct("recomps") : c.name, badge: String(c.romCount) })),
+    detail: (id) => {
+      const c = consoles.find((x) => `console:${x.id}` === id);
+      if (!c) {
+        const msg = cat.consolesError ? ct("error", { error: cat.consolesError }) : cat.consoles ? ct("noConsoles") : ct("loading");
+        return { title: ct("platforms"), content: <NierGameDetail art={false} description={msg} /> };
+      }
+      return {
+        title: c.id === -1 ? ct("recomps") : c.name,
+        content: <NierGameDetail art={false} description={c.id === -1 ? ct("recompsDesc") : ct("consoleDesc", { n: c.romCount })} />,
+      };
+    },
+    activate: (id) => {
+      playSfx("confirm");
+      setOpenList(id);
+    },
+    hint: () => ct("openGame"),
+    back: () => {
+      playSfx("back");
+      setOpenList(null);
+      return true;
+    },
   };
 }
 
