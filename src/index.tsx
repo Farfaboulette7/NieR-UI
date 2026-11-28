@@ -12,6 +12,7 @@ import { notifyIfUpdateAvailable, UpdatesSection } from "./launcher/Updates";
 import { registerSteamDocument, setSteamMenuTheme, themedWindows } from "./launcher/steamMenuTheme";
 import { bindCatalogueEvents, loadCatalogue } from "./catalogue/store";
 import { bindSaveWatch } from "./catalogue/saveWatch";
+import { bindPresence } from "./catalogue/social";
 
 const HOME_ROUTE = "/library/home";
 const GAME_ROUTE = "/library/app/:appid";
@@ -103,6 +104,8 @@ export default definePlugin(() => {
   const unbindCatalogue = bindCatalogueEvents();
   // Sauvegardes des jeux du Catalogue : fermeture, mise en veille, réveil.
   const unbindSaveWatch = bindSaveWatch();
+  // NieRDeck ouvert : présent pour les amis, comme le launcher ouvert.
+  const unbindPresence = bindPresence();
   void loadCatalogue();
   // Laisse Steam finir de démarrer avant d'interroger GitHub.
   const updateTimer = setTimeout(() => void notifyIfUpdateAvailable(), 15_000);
@@ -141,6 +144,7 @@ export default definePlugin(() => {
       stopSync();
       unbindCatalogue();
       unbindSaveWatch();
+      unbindPresence();
       clearTimeout(updateTimer);
       setSteamMenuTheme(false);
       stopMusic();

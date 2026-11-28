@@ -11,7 +11,7 @@ import decky
 
 # Module Catalogue (jeux du serveur RomM de FarfaLauncher), dans son propre fichier.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from catalogue import Catalogue, latest_tag  # noqa: E402
+from catalogue import Catalogue, latest_tag, launcher_notes  # noqa: E402
 
 
 def _settings_path() -> str:
@@ -244,6 +244,18 @@ class Plugin:
 
     async def catalogue_call(self, args: list):
         return await _catalogue.call(args)
+
+    async def catalogue_avatar(self, user_id: int):
+        await _ensure_server()
+        return await _catalogue.avatar(user_id)
+
+    async def catalogue_launcher_notes(self, current: str):
+        """Notes des dernières versions du launcher (onglet « Nouvelles versions »)."""
+        try:
+            return {"data": await launcher_notes(current)}
+        except Exception as e:
+            decky.logger.warning(f"notes du launcher illisibles : {e}")
+            return {"error": "notes", "message": str(e)}
 
     async def catalogue_call_text(self, args: list, text: str):
         return await _catalogue.call_text(args, text)

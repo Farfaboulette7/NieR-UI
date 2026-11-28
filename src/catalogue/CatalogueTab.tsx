@@ -13,6 +13,7 @@ import { CatBoxArt, hasBox } from "./boxArt";
 import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
 import { checkRa, loadRa, openRaProfile, raState } from "./store";
 import { myReportsView, myRequestsView, requestsCount, unreadReports } from "./community";
+import { friendsPresent, friendsView, newVersion, statsView, versionsView } from "./social";
 import {
   CAT_KINDS,
   configure,
@@ -117,6 +118,9 @@ export function catalogueView(cat: CatState): TabView {
   // Messages du joueur : ses signalements (discussions avec le support) et ses demandes de jeux.
   if (open === "my-reports") return myReportsView();
   if (open === "my-requests") return myRequestsView();
+  if (open === "friends") return friendsView();
+  if (open === "stats") return statsView();
+  if (open === "versions") return versionsView();
   if (open) {
     const list = cat.lists[open];
     // Filtre de la liste (Tous / Installés / Recomp / Émulation), comme la bibliothèque du launcher.
@@ -198,8 +202,11 @@ export function catalogueView(cat: CatState): TabView {
     { id: "search", label: ct("search") },
     { id: "installed", label: ct("installed"), badge: cat.status?.data?.installed ? String(cat.status.data.installed) : undefined },
     { id: "favorites", label: ct("favorites"), badge: cat.favorites.size ? String(cat.favorites.size) : undefined },
+    { id: "friends", label: ct("friends"), badge: friendsPresent() ? `● ${friendsPresent()}` : undefined },
+    { id: "stats", label: ct("stats") },
     { id: "my-reports", label: ct("myReports"), badge: unreadReports() ? `● ${unreadReports()}` : undefined },
     { id: "my-requests", label: ct("myRequests"), badge: requestsCount() ? String(requestsCount()) : undefined },
+    { id: "versions", label: ct("versions"), badge: newVersion() ? ct("badgeNewVersion") : cat.status?.data?.version },
     ...consoles.map((c) => ({ id: `console:${c.id}`, label: c.id === -1 ? ct("recomps") : c.name, badge: String(c.romCount) })),
   ];
   return {
@@ -209,6 +216,9 @@ export function catalogueView(cat: CatState): TabView {
       if (id === "search") return { title: ct("search"), content: <NierGameDetail art={false} description={ct("searchDesc")} /> };
       if (id === "installed") return { title: ct("installed"), content: <NierGameDetail art={false} description={ct("installedDesc")} /> };
       if (id === "favorites") return { title: ct("favorites"), content: <NierGameDetail art={false} description={ct("favoritesDesc")} /> };
+      if (id === "friends") return { title: ct("friends"), content: <NierGameDetail art={false} description={ct("friendsDesc")} /> };
+      if (id === "stats") return { title: ct("stats"), content: <NierGameDetail art={false} description={ct("statsDesc")} /> };
+      if (id === "versions") return { title: ct("versions"), content: <NierGameDetail art={false} description={ct("versionsDesc")} /> };
       if (id === "my-reports") return { title: ct("myReports"), content: <NierGameDetail art={false} description={ct("myReportsDesc")} /> };
       if (id === "my-requests") return { title: ct("myRequests"), content: <NierGameDetail art={false} description={ct("myRequestsDesc")} /> };
       const c = consoles.find((x) => `console:${x.id}` === id);

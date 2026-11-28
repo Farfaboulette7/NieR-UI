@@ -12,6 +12,8 @@
 import asyncio
 import base64
 import hashlib
+import html
+import re
 import json
 import os
 import shutil
@@ -25,9 +27,10 @@ LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
 READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique",
                  "resultat", "reveil", "favoris", "fiche", "succes", "compte-ra", "commandes",
-                 "rapport-fichiers", "mes-rapports", "support", "avis", "signalements", "mes-demandes"}
+                 "rapport-fichiers", "mes-rapports", "support", "avis", "signalements", "mes-demandes",
+                 "amis", "stats", "classement"}
 WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer", "veille", "favori",
-                  "plantage", "avis-supprimer"}
+                  "plantage", "avis-supprimer", "presence", "presence-quitter", "hors-ligne", "stats-masquees"}
 # Commandes qui reçoivent un texte saisi par le joueur sur leur entrée standard.
 TEXT_COMMANDS = {"signaler", "repondre-rapport", "avis-publier", "rapports-vus"}
 TIMEOUT = 180
@@ -304,6 +307,12 @@ class Catalogue:
         except OSError:
             pass
 
+    async def avatar(self, user_id: int) -> str | None:
+        """Avatar RomM d'un joueur (servi par le gestionnaire), pour la liste des amis."""
+        res = await run(["avatar", int(user_id)], timeout=30)
+        path = (res.get("data") or {}).get("path")
+        return self._register_file(path) if path and os.path.isfile(path) else None
+
     async def image_base64(self, url: str) -> dict | None:
         """Image en base64, pour les visuels d'un raccourci Steam."""
         res = await run(["image", url], timeout=60)
@@ -417,6 +426,63 @@ def _version_key(v: str) -> tuple:
         nums.append(0)
     pre_num = int("".join(c for c in pre if c.isdigit()) or 0) if pre else 0
     return (*nums[:3], 0 if pre else 1, pre_num)
+
+
+_NOTES_CACHE: dict = {}
+
+
+def _version_tuple(tag: str):
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag.strip())
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def _html_lines(content: str) -> list:
+    """Notes d'une release (HTML du flux Atom) en lignes : titres et texte, puces comprises."""
+    text = html.unescape(content)
+    text = re.sub(r"(?is)<h[1-6][^>]*>(.*?)</h[1-6]>", lambda m: "\n§" + m.group(1) + "\n", text)
+    text = re.sub(r"(?is)<li[^>]*>", "\n• ", text)
+    text = re.sub(r"(?is)<(br|/p|/li|/ul|p)[^>]*>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    out = []
+    for line in text.splitlines():
+        line = html.unescape(line).strip()
+        if not line or line.startswith("Téléchargez"):
+            continue
+        out.append({"kind": "title", "text": line[1:].strip()} if line.startswith("§") else {"kind": "text", "text": line})
+    return out
+
+
+async def launcher_notes(current: str, limit: int = 5) -> list:
+    """Notes des dernières versions stables du launcher (jusqu'à `current`), lues dans le flux
+    Atom des releases (pas l'API de GitHub, limitée). Gardées une heure."""
+    import time
+    cached = _NOTES_CACHE.get("feed")
+    if not cached or time.time() - cached[0] > 3600:
+        raw = await _curl(["-fsSL", f"https://github.com/{LAUNCHER_REPO}/releases.atom"])
+        cached = (time.time(), raw)
+        _NOTES_CACHE["feed"] = cached
+    # Pas de module XML dans le Python de Decky : le flux Atom est lu entrée par entrée.
+    feed = cached[1].decode("utf-8", "replace")
+    cur = _version_tuple(current.split("-")[0]) or (999, 0, 0)
+    notes = []
+    for entry in re.findall(r"(?s)<entry>(.*?)</entry>", feed):
+        def field(name: str) -> str:
+            m = re.search(rf"(?s)<{name}[^>]*>(.*?)</{name}>", entry)
+            return m.group(1) if m else ""
+        tag = field("id").rsplit("/", 1)[-1]
+        v = _version_tuple(tag)
+        if not v or v > cur:
+            continue
+        notes.append({
+            "version": ".".join(map(str, v)),
+            "date": field("updated"),
+            "lines": _html_lines(field("content")),
+            "_v": v,
+        })
+    notes.sort(key=lambda n: n["_v"], reverse=True)
+    for n in notes:
+        del n["_v"]
+    return notes[:limit]
 
 
 async def latest_tag(repo: str) -> str:

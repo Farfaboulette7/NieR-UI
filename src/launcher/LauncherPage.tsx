@@ -271,6 +271,11 @@ export function LauncherPage() {
     switch (action) {
       case "up":
       case "down": {
+        // Zone de droite sans lignes (notes, profil) : elle défile.
+        if (panelDef.scroll) {
+          (catGame ? catDetailRef : listDetailRef).current?.scrollBy({ top: action === "up" ? -90 : 90, behavior: repeat ? "auto" : "smooth" });
+          return true;
+        }
         const next = rows[stepIndex(Math.max(0, rows.indexOf(panelRow)), action === "up" ? -1 : 1, rows.length, !repeat)];
         if (next !== panelRow) playSfx("move");
         setPanel({ tabKey, itemId: current.id, row: next });
@@ -388,12 +393,14 @@ export function LauncherPage() {
       <MusicFooter onClick={showMusic} />
     </>
   );
+  const listDetailRef = useRef<HTMLDivElement>(null);
+  const catDetailRef = useRef<HTMLDivElement>(null);
   const panelFooter = (
     <>
-      <NierHint button="UPDOWN" label={panelDef?.browseOnly ? t("browse") : t("choose")} />
+      <NierHint button="UPDOWN" label={panelDef?.browseOnly || panelDef?.scroll ? t("browse") : t("choose")} />
       {panelRow !== undefined && panelDef?.adjustable?.(panelRow) ? (
         <NierHint button="LEFTRIGHT" label={t("adjust")} />
-      ) : panelDef?.browseOnly ? null : (
+      ) : panelDef?.browseOnly || (panelDef?.scroll && panelDef.rows[0] === "scroll") ? null : (
         <NierHint button="A" label={t("confirm")} />
       )}
       <NierHint button="B" label={t("back")} />
@@ -423,6 +430,7 @@ export function LauncherPage() {
         onItemActivate={catGame ? undefined : listView.activate}
         detailTitle={listDetail.title}
         detailFocused={listPanelRow !== undefined}
+        detailRef={listDetailRef}
         footerStart={musicFooter}
         footer={
           listPanelRow !== undefined ? (
@@ -456,6 +464,7 @@ export function LauncherPage() {
             onItemActivate={catGame.activate}
             detailTitle={detail.title}
             detailFocused={panelRow !== undefined}
+            detailRef={catDetailRef}
             footerStart={musicFooter}
             footer={
               panelRow !== undefined ? (

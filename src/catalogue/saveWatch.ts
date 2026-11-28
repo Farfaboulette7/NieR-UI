@@ -9,6 +9,7 @@ import { callable, toaster } from "@decky/api";
 import { ct, type CatKey } from "./i18n";
 import type { CliResult } from "./store";
 import { proposeCrashReport } from "./community";
+import { presenceNow } from "./social";
 
 declare const SteamClient: any;
 
@@ -91,6 +92,8 @@ async function onLifetime(n: any) {
   // Le résultat est écrit par `jouer` (ou par le veilleur si Steam l'a arrêté) : attendu 60 s au plus.
   const r = await call(["resultat", romId, since, 60]);
   // Erreur du moteur (moteur d'avant sans `resultat`…) : ce n'est pas un échec de la sauvegarde.
+  // La partie finie, le moteur a quitté la présence « en jeu » : de nouveau en ligne.
+  presenceNow();
   if (r.data) {
     const res = r.data as SaveResult;
     toastResult(res);

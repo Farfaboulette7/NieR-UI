@@ -11,6 +11,8 @@ export interface PanelDef {
   adjustable?: (row: string) => boolean;
   /** Liste seulement parcourue (succès) : A n'y fait rien, son aide est masquée. */
   browseOnly?: boolean;
+  /** Pas de lignes : ↑ ↓ font défiler la zone de droite (notes, profil). */
+  scroll?: boolean;
 }
 
 /** Ce qu'affiche un onglet : le menu de gauche, la zone de droite, et ce que fait A. */
