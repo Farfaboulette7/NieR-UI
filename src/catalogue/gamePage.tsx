@@ -457,7 +457,7 @@ function deckSource(source: string): string {
   return source;
 }
 
-function controlsDetail(cat: CatState, romId: number): ReactNode {
+function controlsDetail(cat: CatState, romId: number, row?: string): ReactNode {
   if (!fullDetails(cat, romId)?.installed?.executable) return <NierGameDetail art={false} description={ct("ctlNotInstalled")} />;
   const c = controlsOf(romId);
   if (c === undefined) setTimeout(() => void loadControls(romId), 0);
@@ -465,29 +465,33 @@ function controlsDetail(cat: CatState, romId: number): ReactNode {
   if ("error" in c) return <NierGameDetail art={false} description={ct("error", { error: c.error })} />;
   const fields: NierField[] = [{ label: ct("ctlPlayers"), value: c.ports ? String(c.ports) : ct("ctlPlayersAuto") }];
   if (c.emulator) fields.push({ label: ct("ctlEmulator"), value: c.emulator });
-  // Boutons du joueur 1 (la manette du Deck) : réglage du launcher, sinon celui par défaut.
-  const mine = c.binds[0]?.pad ?? {};
-  const buttons: NierField[] = c.buttons.map((b) => {
-    const source = mine[b.id] ?? b.pad;
-    const name = deckSource(source);
-    return { label: b.label, value: mine[b.id] && mine[b.id] !== b.pad ? ct("ctlRemapped", { button: name }) : name };
-  });
+  const buttons = controlRows(romId);
   return (
     <div>
       <NierGameDetail art={false} fields={fields} />
+      <Text>{ct("ctlDeckNote")}</Text>
       {buttons.length > 0 ? (
         <>
-          <div className="nier-ach-progress-label" style={{ marginTop: 16 }}>
-            {ct("ctlButtons")}
-          </div>
-          <NierGameDetail art={false} fields={buttons} />
+          <div className="nier-ach-progress-label">{ct("ctlButtons")}</div>
+          {/* A entre dans la liste, ↑ ↓ la fait défiler (une console a plus de boutons que l'écran n'a de place). */}
+          <NierOptionList options={buttons} selectedId={row} />
         </>
       ) : (
         <Text>{ct("ctlNoButtons")}</Text>
       )}
-      <Text>{ct("ctlDeckNote")}</Text>
     </div>
   );
+}
+
+/** Boutons de la console pour le joueur 1 (la manette du Deck) : réglage du launcher, sinon celui par défaut. */
+function controlRows(romId: number): NierOption[] {
+  const c = controlsOf(romId);
+  if (!c || c === "loading" || "error" in c) return [];
+  const mine = c.binds[0]?.pad ?? {};
+  return c.buttons.map((b) => {
+    const name = deckSource(mine[b.id] ?? b.pad);
+    return { id: `btn:${b.id}`, label: b.label, badge: mine[b.id] && mine[b.id] !== b.pad ? ct("ctlRemapped", { button: name }) : name };
+  });
 }
 
 // ───────────── La page ─────────────
@@ -563,6 +567,8 @@ function rowsOf(cat: CatState, romId: number, game: CatGame | undefined, item: P
         ...(d?.game?.screenshotUrls ?? []).map((_: string, i: number) => ({ id: `shot:${i}`, label: ct("shotN", { n: i + 1 }) })),
       ];
     }
+    case "controls":
+      return controlRows(romId);
     case "achievements": {
       const a = achievementsOf(romId);
       return a && a !== "loading" ? a.achievements.map((_, i) => ({ id: `ach:${i}`, label: "" })) : [];
@@ -739,7 +745,7 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
     case "achievements":
       return achievementsDetail(romId, row);
     case "controls":
-      return controlsDetail(cat, romId);
+      return controlsDetail(cat, romId, row);
     case "ranking": {
       if (sheet === "loading") return <NierGameDetail art={false} description={ct("loading")} />;
       const rows = sh?.ranking ?? [];
@@ -821,7 +827,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
               return o ? offerRow(o) : undefined;
             })()
           : undefined;
-      return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row), browseOnly: item === "achievements" } satisfies PanelDef;
+      return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row), browseOnly: item === "achievements" || item === "controls" } satisfies PanelDef;
     },
     hint: (id) => {
       const item = asItem(id);
@@ -833,7 +839,7 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
         return isInstalled(cat, romId, game) ? ct("hintLaunch") : ct("actionInstall");
       }
       if (!rowsOf(cat, romId, game, item).length) return undefined;
-      if (item === "achievements") return ct("achBrowse");
+      if (item === "achievements" || item === "controls") return ct("achBrowse");
       return item === "steam" ? ct("hintOpen") : ct("choose");
     },
     back: () => {
