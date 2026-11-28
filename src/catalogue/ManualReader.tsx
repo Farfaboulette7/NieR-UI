@@ -56,7 +56,8 @@ export function manualAction(action: NierAction, repeat: boolean): boolean {
 }
 
 export function ManualReader({ view, status, footerStart }: { view: ManualView; status: ReactNode; footerStart?: ReactNode }) {
-  const label = view.pages ? ct("manualPage", { page: view.page, pages: view.pages }) : "…";
+  const shown = view.spreads[view.spread] ?? [];
+  const label = !view.pages || !shown.length ? "…" : shown.length > 1 ? `${ct("manualPages")} ${shown.join("-")} / ${view.pages}` : ct("manualPage", { page: shown[0], pages: view.pages });
   return (
     <div className="nier-root nier-manual">
       <style>{MANUAL_CSS}</style>
@@ -82,7 +83,14 @@ export function ManualReader({ view, status, footerStart }: { view: ManualView; 
           {view.error ? (
             <p className="nier-game-description">{ct("error", { error: view.error })}</p>
           ) : (
-            view.url && <img className="nier-manual-page" src={view.url} alt={label} style={view.zoom > 1 ? { height: `${view.zoom * 100}%` } : undefined} />
+            view.urls.length > 0 && (
+              // Double page : les deux pages côte à côte, comme un livret ouvert.
+              <div className="nier-manual-spread" data-pages={view.urls.length} style={{ height: `${view.zoom * 100}%`, ["--pages" as string]: view.urls.length }}>
+                {view.urls.map((url) => (
+                  <img key={url} className="nier-manual-page" src={url} alt="" />
+                ))}
+              </div>
+            )
           )}
         </div>
       </main>
@@ -123,18 +131,21 @@ export const MANUAL_CSS = `
   padding: 10px;
   background-color: var(--nier-mid-trans);
 }
-.nier-manual-page {
+.nier-manual-spread {
   margin: auto;
+  flex: none;
+  display: flex;
+}
+.nier-manual-page {
   flex: none;
   display: block;
   height: 100%;
-  max-width: 100%;
-  object-fit: contain;
-  box-shadow: 6px 6px 0 var(--nier-shadow);
-  background-color: #fff;
-}
-.nier-manual-stage[data-zoom="true"] .nier-manual-page {
-  max-width: none;
   width: auto;
+  object-fit: contain;
+  filter: drop-shadow(5px 5px 0 var(--nier-shadow));
+}
+/* Zoom 100 % : la double page entière tient dans l'écran (chaque page, sa moitié de largeur). */
+.nier-manual-stage[data-zoom="false"] .nier-manual-page {
+  max-width: calc((100vw - 2 * var(--nier-gutter) - 24px) / var(--pages));
 }
 `;

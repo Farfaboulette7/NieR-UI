@@ -122,6 +122,8 @@ class Catalogue:
         self._installs: dict = {}
         # Processus de chaque installation en cours (pour l'annuler).
         self._procs: dict = {}
+        # Livret → forme de ses pages (lue une fois par pdfinfo).
+        self._pdf_shapes: dict = {}
 
     async def status(self) -> dict:
         """Programme installé, sa version, et l'état de la connexion au serveur."""
@@ -207,7 +209,8 @@ class Catalogue:
             return {"error": res.get("error") or "manual", "message": res.get("message") or "Livret introuvable."}
         if not shutil.which("pdftoppm") or not shutil.which("pdfinfo"):
             return {"error": "pdftoppm", "message": "pdftoppm manque sur ce Deck (paquet poppler de SteamOS)."}
-        pages = await self._pdf_pages(path)
+        shapes = await self._pdf_pages(path)
+        pages = len(shapes)
         if pages < 1:
             return {"error": "pdf", "message": "Livret illisible."}
         page = max(1, min(pages, int(page)))
@@ -230,24 +233,51 @@ class Catalogue:
             if not os.path.isfile(out):
                 return {"error": "pdf", "message": f"Page {page} illisible."}
             self._prune_pages(folder)
-        return {"data": {"url": self._register_file(out), "page": page, "pages": pages, "count": data.get("count", 1)}}
+        return {"data": {"url": self._register_file(out), "page": page, "pages": pages, "wide": shapes, "count": data.get("count", 1)}}
 
-    async def _pdf_pages(self, path: str) -> int:
+    async def _pdf_pages(self, path: str) -> list:
+        """Forme de chaque page : True pour une page à l'italienne (plus large que haute)."""
+        cached = self._pdf_shapes.get(path)
+        if cached is not None:
+            return cached
+        # Pages vues dans les deux premiers passages (taille et rotation, page par page).
         proc = await asyncio.create_subprocess_exec(
-            "pdfinfo", path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            "pdfinfo", "-f", "1", "-l", "100000", path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), 30)
         except asyncio.TimeoutError:
             proc.kill()
-            return 0
+            return []
+        sizes: dict = {}
+        rotations: dict = {}
+        total = 0
         for line in out.decode("utf-8", "replace").splitlines():
             if line.startswith("Pages:"):
                 try:
-                    return int(line.split(":", 1)[1])
+                    total = int(line.split(":", 1)[1])
                 except ValueError:
-                    return 0
-        return 0
+                    return []
+                continue
+            parts = line.split()
+            # « Page    3 size: 594.96 x 841.92 pts (A4) », « Page    3 rot:  90 »
+            if len(parts) >= 4 and parts[0] == "Page" and parts[1].isdigit():
+                n = int(parts[1])
+                try:
+                    if parts[2] == "size:" and len(parts) >= 6:
+                        sizes[n] = (float(parts[3]), float(parts[5]))
+                    elif parts[2] == "rot:":
+                        rotations[n] = int(float(parts[3])) % 180
+                except ValueError:
+                    pass
+        shapes = []
+        for n in range(1, total + 1):
+            w, h = sizes.get(n, (1.0, 1.414))
+            if rotations.get(n) == 90:
+                w, h = h, w
+            shapes.append(w > h)
+        self._pdf_shapes[path] = shapes
+        return shapes
 
     @staticmethod
     def _prune_pages(folder: str):

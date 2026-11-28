@@ -931,11 +931,10 @@ export async function loadControls(romId: number) {
 
 // ───────────── Livret PDF (Médias → Livret), lu page par page en plein écran ─────────────
 
-const backendManualPage = callable<[romId: number, index: number, page: number, width: number], CliResult<{ url: string; page: number; pages: number; count: number }>>(
-  "catalogue_manual_page",
-);
+type ManualPage = { url: string; page: number; pages: number; wide: boolean[]; count: number };
+const backendManualPage = callable<[romId: number, index: number, page: number, width: number], CliResult<ManualPage>>("catalogue_manual_page");
 
-/** Zooms proposés (1 : la page entière à l'écran). */
+/** Zooms proposés (1 : la double page entière à l'écran). */
 export const MANUAL_ZOOMS = [1, 1.5, 2, 3];
 /** Largeur rendue d'une page au zoom 1 (écran de 1280 × 800). */
 const MANUAL_WIDTH = 1000;
@@ -944,10 +943,14 @@ export interface ManualView {
   romId: number;
   index: number;
   title: string;
-  page: number;
+  /** Doubles pages du livret (numéros de page), comme le mode « Livre » du launcher. */
+  spreads: number[][];
+  /** Double page affichée (index dans `spreads`). */
+  spread: number;
   pages: number;
   zoom: number;
-  url?: string;
+  /** Images des pages de la double page affichée. */
+  urls: string[];
   loading: boolean;
   error?: string;
 }
@@ -959,24 +962,61 @@ export const manualState = () => manual;
 
 const manualWidth = (zoom: number) => Math.round(MANUAL_WIDTH * zoom);
 
+/**
+ * Doubles pages : la couverture seule, puis les pages deux par deux (gauche, droite). Une page
+ * à l'italienne (déjà une double page scannée) reste seule.
+ */
+function spreadsOf(wide: boolean[]): number[][] {
+  const n = wide.length;
+  if (!n) return [];
+  const out: number[][] = [[1]];
+  let p = 2;
+  while (p <= n) {
+    if (!wide[p - 1] && p + 1 <= n && !wide[p]) {
+      out.push([p, p + 1]);
+      p += 2;
+    } else {
+      out.push([p]);
+      p += 1;
+    }
+  }
+  return out;
+}
+
+const pageCall = (m: ManualView, page: number) =>
+  backendManualPage(m.romId, m.index, page, manualWidth(m.zoom)).catch((e) => ({ error: "call", message: String(e) }) as CliResult<ManualPage>);
+
 async function showManualPage() {
   if (!manual) return;
-  const m = manual;
   const ticket = ++manualRequest;
-  manual = { ...m, loading: true, error: undefined };
+  manual = { ...manual, loading: true, error: undefined };
   changed();
-  const r = await backendManualPage(m.romId, m.index, m.page, manualWidth(m.zoom)).catch((e) => ({ error: "call", message: String(e) }) as CliResult<any>);
+  // Première lecture : nombre et forme des pages, pour faire les doubles pages.
+  if (!manual.spreads.length) {
+    const first = await pageCall(manual, 1);
+    if (ticket !== manualRequest || !manual) return;
+    if (!first.data) {
+      manual = { ...manual, loading: false, error: errorText(first) };
+      return changed();
+    }
+    manual = { ...manual, spreads: spreadsOf(first.data.wide ?? []), pages: first.data.pages };
+  }
+  const m = manual;
+  const pages = m.spreads[m.spread] ?? [1];
+  const results = await Promise.all(pages.map((p) => pageCall(m, p)));
   if (ticket !== manualRequest || !manual) return;
-  if (r.data) {
-    manual = { ...manual, url: r.data.url, page: r.data.page, pages: r.data.pages, loading: false };
-    // Page suivante préparée pendant la lecture : elle s'affiche tout de suite.
-    if (r.data.page < r.data.pages) void backendManualPage(m.romId, m.index, r.data.page + 1, manualWidth(m.zoom)).catch(() => undefined);
-  } else manual = { ...manual, loading: false, error: errorText(r) };
+  const failed = results.find((r) => !r.data);
+  if (failed) manual = { ...manual, loading: false, error: errorText(failed) };
+  else {
+    manual = { ...manual, urls: results.map((r) => r.data!.url), loading: false };
+    // Double page suivante préparée pendant la lecture : elle s'affiche tout de suite.
+    for (const p of m.spreads[m.spread + 1] ?? []) void pageCall(m, p);
+  }
   changed();
 }
 
 export function openManual(romId: number, index: number, title: string) {
-  manual = { romId, index, title, page: 1, pages: 0, zoom: 1, loading: true };
+  manual = { romId, index, title, spreads: [], spread: 0, pages: 0, zoom: 1, urls: [], loading: true };
   void showManualPage();
 }
 
@@ -986,12 +1026,12 @@ export function closeManual() {
   changed();
 }
 
-/** Page précédente / suivante ; false au bout du livret. */
+/** Double page précédente / suivante ; false au bout du livret. */
 export function manualTurn(delta: number): boolean {
-  if (!manual || !manual.pages) return false;
-  const page = Math.max(1, Math.min(manual.pages, manual.page + delta));
-  if (page === manual.page) return false;
-  manual = { ...manual, page };
+  if (!manual || !manual.spreads.length) return false;
+  const spread = Math.max(0, Math.min(manual.spreads.length - 1, manual.spread + delta));
+  if (spread === manual.spread) return false;
+  manual = { ...manual, spread };
   void showManualPage();
   return true;
 }
