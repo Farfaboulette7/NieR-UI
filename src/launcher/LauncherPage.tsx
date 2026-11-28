@@ -13,6 +13,7 @@ import { stepIndex, type NierAction, type NierActionHandler } from "./GamepadRoo
 import { NierScreen } from "./NierScreen";
 import type { TabView } from "./tabView";
 import { ManualReader, manualAction } from "../catalogue/ManualReader";
+import { activateSupportRow, supportDetail, supportInfo, supportRows } from "../catalogue/extras";
 import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueGameView, catalogueView } from "../catalogue/CatalogueTab";
 import { ct } from "../catalogue/i18n";
 import { catalogueReady, loadDetails, loadSheet, manualState, setOpenGame, useCatalogue } from "../catalogue/store";
@@ -831,6 +832,8 @@ function systemView(
       { id: "language", label: t("language"), badge: LANGS.find((l) => l.id === settings.language)?.label },
       { id: "updates", label: t("updates"), badge: updates.checking ? "…" : status?.available ? `→ ${status.latest}` : status?.current },
       catalogueSettingsItem(cat),
+      // Comme le launcher : la section n'existe que si le gestionnaire la fournit (soutien.json).
+      ...(catalogueReady() && supportInfo() ? [{ id: "support", label: ct("supportProject") }] : []),
       { id: "steam", label: t("steamSettings") },
       { id: "diagnostic", label: t("diagnostic") },
     ],
@@ -838,6 +841,7 @@ function systemView(
       if (id === "options") return { title: t("nierOptions"), content: optionsDetail(row) };
       if (id === "volume") return { title: t("volume"), content: volumeDetail(row) };
       if (id === "steam") return { title: t("steamSettings"), content: steamDetail(row) };
+      if (id === "support") return { title: ct("supportProject"), content: supportDetail(row) };
       if (id === "language") {
         return {
           title: t("language"),
@@ -892,6 +896,10 @@ function systemView(
     },
     panel: (id) => {
       if (id === catalogueSettingsId) return catalogueSettingsPanel(cat);
+      if (id === "support") {
+        const rows = supportRows().map((r) => r.id);
+        return rows.length ? { rows, activate: activateSupportRow } : undefined;
+      }
       if (id === "options") {
         return {
           rows: TOGGLES.map((x) => x.id),

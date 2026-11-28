@@ -29,6 +29,7 @@ import {
   loadAchievements,
   loadControls,
   openManual,
+  resumeInstall,
   cancelInstall,
   chooseExecutable,
   ensureShortcut,
@@ -172,6 +173,7 @@ function pendingExes(cat: CatState, romId: number): string[] {
 
 /** Libellé de la première entrée du menu, comme « Jouer » / « Installer » sur la page Steam. */
 function playLabel(cat: CatState, romId: number, game?: CatGame): string {
+  if (cat.progress[romId]?.phase === "paused") return ct("actionResume");
   if (cat.progress[romId]) return ct("actionCancel");
   if (pendingExes(cat, romId).length) return ct("actionChooseExe");
   return isInstalled(cat, romId, game) ? ct("actionPlay") : ct("actionInstall");
@@ -180,6 +182,10 @@ function playLabel(cat: CatState, romId: number, game?: CatGame): string {
 /** A sur la première entrée : agit tout de suite, comme sur la page Steam. */
 function playActivate(cat: CatState, romId: number, game?: CatGame) {
   const p = cat.progress[romId];
+  if (p?.phase === "paused") {
+    playSfx("confirm");
+    return void resumeInstall(romId);
+  }
   if (p) {
     if (p.phase === "cancel") return;
     playSfx("confirm");

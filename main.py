@@ -11,7 +11,7 @@ import decky
 
 # Module Catalogue (jeux du serveur RomM de FarfaLauncher), dans son propre fichier.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from catalogue import Catalogue, latest_tag, launcher_notes  # noqa: E402
+from catalogue import Catalogue, latest_tag, launcher_notes, run  # noqa: E402
 
 
 def _settings_path() -> str:
@@ -267,7 +267,27 @@ class Plugin:
         return await _catalogue.install(int(rom_id), emulator or None, recomp or None)
 
     async def catalogue_cancel(self, rom_id: int):
-        return _catalogue.cancel(int(rom_id))
+        return await _catalogue.cancel(int(rom_id))
+
+    async def catalogue_queue(self):
+        return _catalogue.queue()
+
+    async def catalogue_pause(self, rom_id: int):
+        return await _catalogue.pause(int(rom_id))
+
+    async def catalogue_resume(self, rom_id: int):
+        return await _catalogue.resume(int(rom_id))
+
+    async def catalogue_move_first(self, rom_id: int):
+        return await _catalogue.move_first(int(rom_id))
+
+    async def catalogue_set_download_limit(self, mb: int):
+        return await _catalogue.set_download_limit(int(mb))
+
+    async def catalogue_soutien(self):
+        """Section « Soutenir le projet » (soutien.json du gestionnaire) ; None : cachée."""
+        res = await run(["soutien"], timeout=20)
+        return res.get("data")
 
     async def catalogue_installing(self):
         return _catalogue.installing()
@@ -297,8 +317,21 @@ class Plugin:
 
     async def _main(self):
         decky.logger.info("NieRDeck chargé")
+        # File des téléchargements : reprise après un redémarrage du plugin, et suite de la file
+        # quand une installation lancée avant le redémarrage se termine.
+        async def queue_loop():
+            while True:
+                try:
+                    await _catalogue.pump()
+                except Exception as e:
+                    decky.logger.warning(f"file des téléchargements : {e}")
+                await asyncio.sleep(10)
+        self._queue_task = asyncio.get_running_loop().create_task(queue_loop())
 
     async def _unload(self):
+        task = getattr(self, "_queue_task", None)
+        if task is not None:
+            task.cancel()
         if _media.server is not None:
             _media.server.close()
             _media.server = None

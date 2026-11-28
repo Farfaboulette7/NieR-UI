@@ -17,6 +17,7 @@ import re
 import json
 import os
 import shutil
+import signal
 import stat
 import tempfile
 
@@ -127,6 +128,8 @@ class Catalogue:
         # Sert un fichier local à l'interface (petit serveur HTTP de NieRDeck) ; renvoie son URL.
         self._register_file = register_file
         self._installs: dict = {}
+        self._queue: list = []
+        self._load_queue()
         # Processus de chaque installation en cours (pour l'annuler).
         self._procs: dict = {}
         # Livret → forme de ses pages (lue une fois par pdfinfo).
@@ -160,53 +163,178 @@ class Catalogue:
             args.append("--jeton")
         return await run(args, stdin=token.strip() if token else None, timeout=60)
 
+    # ───── file des téléchargements (comme Downloads.tsx du launcher) ─────
+    # Un jeu à la fois. Chaque entrée : {"romId", "emulator", "recomp", "paused"}. La file est
+    # gardée sur le disque : elle survit à un redémarrage du plugin (le moteur en cours aussi,
+    # retrouvé dans /proc par _orphan_installs).
+
+    def _queue_path(self) -> str:
+        return os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "file-installations.json")
+
+    def _load_queue(self):
+        try:
+            with open(self._queue_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self._queue = [q for q in data if isinstance(q, dict) and isinstance(q.get("romId"), int)]
+        except Exception:
+            self._queue = []
+
+    def _save_queue(self):
+        try:
+            os.makedirs(os.path.dirname(self._queue_path()), exist_ok=True)
+            tmp = self._queue_path() + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._queue, f)
+            os.replace(tmp, self._queue_path())
+        except Exception as e:
+            decky.logger.warning(f"file des téléchargements non écrite : {e}")
+
+    def _running(self) -> set:
+        return set(self._installs.keys()) | set(_orphan_installs().keys())
+
+    def queue(self) -> list:
+        """La file, dans l'ordre : le jeu en cours d'abord (`running`), puis ceux qui attendent."""
+        running = self._running()
+        out = [{"romId": r, "paused": False, "running": True} for r in sorted(running) if not any(q["romId"] == r for q in self._queue)]
+        out += [{"romId": q["romId"], "paused": bool(q.get("paused")), "running": q["romId"] in running} for q in self._queue]
+        out.sort(key=lambda q: not q["running"])
+        return out
+
+    async def _changed(self):
+        self._save_queue()
+        await decky.emit("catalogue_queue", self.queue())
+
     async def install(self, rom_id: int, emulator: str | None = None, recomp: str | None = None) -> bool:
-        """Installation en arrière-plan : événements catalogue_progress puis catalogue_done.
-        `emulator` ou `recomp` : la façon de jouer choisie (sinon celle conseillée)."""
-        if rom_id in self._installs:
+        """Met le jeu dans la file ; il s'installe à son tour (événements catalogue_progress puis
+        catalogue_done). `emulator` ou `recomp` : la façon de jouer choisie (sinon celle conseillée)."""
+        if rom_id in self._running():
             return False
+        found = next((q for q in self._queue if q["romId"] == rom_id), None)
+        if found:
+            # Déjà dans la file (en pause) : il reprend.
+            found["paused"] = False
+        else:
+            self._queue.append({"romId": rom_id, "emulator": emulator, "recomp": recomp, "paused": False})
+        await self._changed()
+        await self.pump()
+        return True
+
+    async def pump(self):
+        """Lance le premier jeu de la file qui n'est pas en pause, si rien ne s'installe."""
+        if self._running():
+            return
+        nxt = next((q for q in self._queue if not q.get("paused")), None)
+        if nxt is None:
+            return
+        rom_id = nxt["romId"]
         args = ["installer", rom_id]
-        if emulator:
-            args += ["--emulateur", emulator]
-        elif recomp:
-            args += ["--recomp", recomp]
+        if nxt.get("emulator"):
+            args += ["--emulateur", nxt["emulator"]]
+        elif nxt.get("recomp"):
+            args += ["--recomp", nxt["recomp"]]
 
         async def progress(msg):
             if msg.get("type") == "progress":
                 await decky.emit("catalogue_progress", msg.get("data"))
 
         async def job():
+            paused = False
             try:
                 result = await run(args, on_line=progress, timeout=6 * 3600, on_proc=lambda p: self._procs.__setitem__(rom_id, p))
-                await decky.emit("catalogue_done", {"romId": rom_id, **result})
+                paused = (result.get("data") or {}).get("status") == "paused"
+                if paused:
+                    for q in self._queue:
+                        if q["romId"] == rom_id:
+                            q["paused"] = True
+                else:
+                    self._queue = [q for q in self._queue if q["romId"] != rom_id]
+                    await decky.emit("catalogue_done", {"romId": rom_id, **result})
             finally:
                 self._installs.pop(rom_id, None)
                 self._procs.pop(rom_id, None)
+                await self._changed()
+                await self.pump()
 
         self._installs[rom_id] = asyncio.get_running_loop().create_task(job())
-        return True
+        await self._changed()
 
-    def cancel(self, rom_id: int) -> bool:
-        """Annule une installation : le moteur reçoit le signal d'arrêt et s'arrête proprement
-        (comme « Annuler » dans le launcher). Ce qui était déjà installé reste en place."""
+    def _signal(self, rom_id: int, sig: int) -> bool:
         proc = self._procs.get(rom_id)
         if proc is not None and proc.returncode is None:
-            decky.logger.info(f"installation du jeu {rom_id} annulée")
-            proc.terminate()
+            proc.send_signal(sig)
             return True
-        # Installation lancée avant un redémarrage du plugin : le moteur tourne encore, seul.
         pid = _orphan_installs().get(rom_id)
         if pid is None:
             return False
-        decky.logger.info(f"installation du jeu {rom_id} annulée (moteur {pid}, lancé avant le redémarrage)")
         try:
-            os.kill(pid, 15)
+            os.kill(pid, sig)
         except OSError:
             return False
         return True
 
+    async def pause(self, rom_id: int) -> bool:
+        """Pause : le téléchargement s'arrête, ce qui est déjà téléchargé reste pour la reprise."""
+        found = next((q for q in self._queue if q["romId"] == rom_id), None)
+        if found is None and rom_id in self._running():
+            # Installation lancée avant un redémarrage du plugin : elle rejoint la file.
+            found = {"romId": rom_id, "emulator": None, "recomp": None, "paused": True}
+            self._queue.insert(0, found)
+        if found is None:
+            return False
+        found["paused"] = True
+        if rom_id in self._running():
+            self._signal(rom_id, signal.SIGUSR2)
+        await self._changed()
+        if rom_id not in self._running():
+            await self.pump()
+        return True
+
+    async def resume(self, rom_id: int) -> bool:
+        found = next((q for q in self._queue if q["romId"] == rom_id), None)
+        if found is None:
+            return False
+        found["paused"] = False
+        await self._changed()
+        await self.pump()
+        return True
+
+    async def move_first(self, rom_id: int) -> bool:
+        """Passe en tête de la file (après le jeu en cours, qui n'est pas interrompu)."""
+        found = next((q for q in self._queue if q["romId"] == rom_id), None)
+        if found is None:
+            return False
+        self._queue.remove(found)
+        running = [q for q in self._queue if q["romId"] in self._running()]
+        rest = [q for q in self._queue if q["romId"] not in self._running()]
+        self._queue = running + [found] + rest
+        await self._changed()
+        return True
+
+    async def set_download_limit(self, mb: int) -> dict:
+        """Limite de débit (Mo/s, 0 : aucune), appliquée aussi à l'installation en cours."""
+        res = await run(["limite", max(0, int(mb))], timeout=30)
+        if res.get("data") is not None:
+            for rom_id in self._running():
+                self._signal(rom_id, signal.SIGUSR1)
+        return res
+
+    async def cancel(self, rom_id: int) -> bool:
+        """Annule une installation (en cours ou dans la file) : le moteur reçoit le signal d'arrêt
+        et s'arrête proprement (comme « Annuler » dans le launcher)."""
+        queued = any(q["romId"] == rom_id for q in self._queue)
+        self._queue = [q for q in self._queue if q["romId"] != rom_id]
+        if queued:
+            await self._changed()
+        if rom_id in self._running():
+            decky.logger.info(f"installation du jeu {rom_id} annulée")
+            return self._signal(rom_id, signal.SIGTERM)
+        if queued:
+            await decky.emit("catalogue_done", {"romId": rom_id, "error": "cancelled"})
+        return queued
+
     def installing(self) -> list:
-        return sorted(set(self._installs.keys()) | set(_orphan_installs().keys()))
+        return sorted(self._running())
+
 
     async def image(self, url: str) -> str | None:
         """Image du serveur RomM (avec le jeton), servie à l'interface par le serveur local."""

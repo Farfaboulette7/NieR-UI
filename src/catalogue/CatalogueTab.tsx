@@ -14,6 +14,7 @@ import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
 import { checkRa, loadRa, openRaProfile, raState } from "./store";
 import { myReportsView, myRequestsView, requestsCount, unreadReports } from "./community";
 import { friendsPresent, friendsView, newVersion, statsView, versionsView } from "./social";
+import { adjustLimit, downloadsCount, downloadsView, limitLabel } from "./extras";
 import {
   CAT_KINDS,
   configure,
@@ -22,6 +23,7 @@ import {
   isNewGame,
   loadConsoles,
   loadDetails,
+  loadList,
   logout,
   matchesKind,
   setOpenGame,
@@ -122,8 +124,11 @@ export function catalogueView(cat: CatState): TabView {
   if (open === "stats") return statsView();
   if (open === "versions") return versionsView();
   if (open === "platforms") return platformsView(cat);
+  if (open === "downloads") return downloadsView();
   if (open) {
     const list = cat.lists[open];
+    // Liste vidée (jeu installé ou désinstallé) : relue.
+    if (!list) setTimeout(() => void loadList(open), 0);
     // Filtre de la liste (Tous / Installés / Recomp / Émulation), comme la bibliothèque du launcher.
     const games = (list?.games ?? []).filter((g) => matchesKind(g, cat.kind));
     const find = (id?: string) => games.find((g) => `g:${g.id}` === id);
@@ -202,6 +207,8 @@ export function catalogueView(cat: CatState): TabView {
   const items: NierMenuItem[] = [
     { id: "search", label: ct("search") },
     { id: "installed", label: ct("installed"), badge: cat.status?.data?.installed ? String(cat.status.data.installed) : undefined },
+    // File des téléchargements, seulement quand il y en a.
+    ...(downloadsCount() ? [{ id: "downloads", label: ct("downloads"), badge: String(downloadsCount()) }] : []),
     { id: "favorites", label: ct("favorites"), badge: cat.favorites.size ? String(cat.favorites.size) : undefined },
     { id: "friends", label: ct("friends"), badge: friendsPresent() ? `● ${friendsPresent()}` : undefined },
     { id: "stats", label: ct("stats") },
@@ -222,6 +229,7 @@ export function catalogueView(cat: CatState): TabView {
         const msg = cat.consolesError ? ct("error", { error: cat.consolesError }) : cat.consoles ? ct("platformsDesc", { n: consoles.filter((c) => c.id !== -1).length }) : ct("loading");
         return { title: ct("platforms"), content: <NierGameDetail art={false} description={msg} /> };
       }
+      if (id === "downloads") return { title: ct("downloads"), content: <NierGameDetail art={false} description={ct("downloadsDesc")} /> };
       if (id === "friends") return { title: ct("friends"), content: <NierGameDetail art={false} description={ct("friendsDesc")} /> };
       if (id === "stats") return { title: ct("stats"), content: <NierGameDetail art={false} description={ct("statsDesc")} /> };
       if (id === "versions") return { title: ct("versions"), content: <NierGameDetail art={false} description={ct("versionsDesc")} /> };
@@ -291,12 +299,13 @@ function letterOf(name: string): string {
 
 // ───────────── Système → FarfaLauncher ─────────────
 
-const SETTINGS_ROWS = ["server", "token", "update", "sync", "logout"] as const;
+const SETTINGS_ROWS = ["server", "token", "update", "sync", "limit", "logout"] as const;
 const ROW_LABEL: Record<(typeof SETTINGS_ROWS)[number], CatKey> = {
   server: "rowServer",
   token: "rowToken",
   update: "rowUpdate",
   sync: "rowSync",
+  limit: "rowLimit",
   logout: "rowLogout",
 };
 
@@ -350,8 +359,11 @@ export function catalogueSettingsDetail(cat: CatState, row?: string): ReactNode 
           { label: ct("raAccount"), value: raValue(offline) },
         ]}
       />
-      <NierOptionList options={[...SETTINGS_ROWS.map((r) => ({ id: r, label: ct(ROW_LABEL[r]) })), ...raRows()]} selectedId={row} />
-      <Text>{row?.startsWith("ra:") ? ct("raHelp") : (cat.busy ?? cat.notice ?? ct("settingsDesc"))}</Text>
+      <NierOptionList
+        options={[...SETTINGS_ROWS.map((r) => ({ id: r, label: ct(ROW_LABEL[r]), badge: r === "limit" ? limitLabel(info?.downloadLimitMb) : undefined })), ...raRows()]}
+        selectedId={row}
+      />
+      <Text>{row?.startsWith("ra:") ? ct("raHelp") : row === "limit" ? ct("limitHelp") : (cat.busy ?? cat.notice ?? ct("settingsDesc"))}</Text>
     </div>
   );
 }
@@ -359,7 +371,10 @@ export function catalogueSettingsDetail(cat: CatState, row?: string): ReactNode 
 export function catalogueSettingsPanel(cat: CatState): PanelDef {
   return {
     rows: [...SETTINGS_ROWS, ...RA_ROWS],
+    adjust: (row, delta) => (row === "limit" ? adjustLimit(delta) : false),
+    adjustable: (row) => row === "limit",
     activate: (row) => {
+      if (row === "limit") return;
       if (row === "ra:link") {
         const { account } = raState();
         if (!account || typeof account !== "object" || !("profileUrl" in account) || !account.profileUrl) return playSfx("unfocus");

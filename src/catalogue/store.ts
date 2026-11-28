@@ -21,6 +21,8 @@ export interface CatInfo {
   username: string | null;
   installed: number;
   pendingSessions: number;
+  /** Limite de débit des téléchargements (Mo/s, 0 : aucune). */
+  downloadLimitMb?: number;
 }
 
 export interface CatStatus extends CliResult<CatInfo> {
@@ -142,6 +144,58 @@ export interface CatSheet {
 }
 const backendInstalling = callable<[], number[]>("catalogue_installing");
 const backendCancel = callable<[romId: number], boolean>("catalogue_cancel");
+const backendQueue = callable<[], QueueEntry[]>("catalogue_queue");
+const backendPause = callable<[romId: number], boolean>("catalogue_pause");
+const backendResume = callable<[romId: number], boolean>("catalogue_resume");
+const backendMoveFirst = callable<[romId: number], boolean>("catalogue_move_first");
+const backendSetLimit = callable<[mb: number], CliResult<{ downloadLimitMb: number }>>("catalogue_set_download_limit");
+
+// ───────────── File des téléchargements (Downloads.tsx du launcher) ─────────────
+
+/** Une entrée de la file du backend : le jeu en cours (`running`), puis ceux qui attendent. */
+export interface QueueEntry {
+  romId: number;
+  paused: boolean;
+  running: boolean;
+}
+
+let queue: QueueEntry[] = [];
+export const downloadQueue = () => queue;
+
+/** La file reçue du backend : « En attente » / « En pause » pour ceux qui ne tournent pas. */
+function applyQueue(q: QueueEntry[]) {
+  queue = q;
+  const progress = { ...state.progress };
+  for (const e of q) {
+    if (e.running) progress[e.romId] ??= { phase: "prepare", done: 0, total: 0 };
+    else progress[e.romId] = { ...(progress[e.romId] ?? { done: 0, total: 0 }), phase: e.paused ? "paused" : "queued" };
+  }
+  // Sorti de la file sans fin annoncée (annulé avant de commencer) : plus rien à afficher.
+  for (const [id, p] of Object.entries(progress)) {
+    if ((p.phase === "queued" || p.phase === "paused") && !q.some((e) => e.romId === Number(id))) delete progress[Number(id)];
+  }
+  state.progress = progress;
+}
+
+export async function pauseInstall(romId: number) {
+  await backendPause(romId);
+}
+
+export async function resumeInstall(romId: number) {
+  await backendResume(romId);
+}
+
+export async function moveInstallFirst(romId: number) {
+  await backendMoveFirst(romId);
+}
+
+/** Limite de débit (Mo/s, 0 : aucune), appliquée tout de suite, installation en cours comprise. */
+export async function setDownloadLimit(mb: number) {
+  if (state.status?.data) state.status = { ...state.status, data: { ...state.status.data, downloadLimitMb: mb } };
+  changed();
+  const r = await backendSetLimit(mb);
+  if (r.error) toaster.toast({ title: "NieRDeck", body: ct("error", { error: errorText(r) }) });
+}
 const backendImage = callable<[url: string], string | null>("catalogue_image");
 const backendShortcuts = callable<[], Record<string, number>>("catalogue_shortcuts");
 const backendUpdate = callable<[], CliResult<{ version: string }>>("catalogue_update_cli");
@@ -210,6 +264,7 @@ export async function loadCatalogue(attempt = 0) {
     state.status = await backendStatus();
     state.shortcuts = (await backendShortcuts()) ?? {};
     for (const id of (await backendInstalling()) ?? []) state.progress[id] ??= { phase: "prepare", done: 0, total: 0 };
+    applyQueue((await backendQueue()) ?? []);
     void autoUpdateEngine();
     if (catalogueReady()) void loadFavorites();
   } catch (e) {
@@ -246,8 +301,13 @@ export function bindCatalogueEvents(): () => void {
     changed();
   });
   const onDone = addEventListener<[CliResult<any> & { romId: number }]>("catalogue_done", (r) => void installFinished(r));
+  const onQueue = addEventListener<[QueueEntry[]]>("catalogue_queue", (q) => {
+    applyQueue(q ?? []);
+    changed();
+  });
   return () => {
     eventsBound = false;
+    removeEventListener("catalogue_queue", onQueue);
     removeEventListener("catalogue_progress", onProgress);
     removeEventListener("catalogue_done", onDone);
   };

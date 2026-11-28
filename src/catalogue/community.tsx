@@ -14,6 +14,7 @@ import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
 import { promptText } from "./prompt";
 import { notifyCatalogue, setOpenList, type CliResult } from "./store";
+import { activateRequestRow, adjustRequest, requestAdjustable, requestDetail, requestRows } from "./extras";
 
 const call = callable<[args: (string | number)[]], CliResult<any>>("catalogue_call");
 const callText = callable<[args: (string | number)[], text: string], CliResult<any>>("catalogue_call_text");
@@ -592,8 +593,9 @@ export function myRequestsView(): TabView {
   const find = (id?: string) => list.find((q) => `q:${q.id}` === id);
   return {
     menuTitle: `${ct("myRequests")}${list.length ? ` · ${list.length}` : ""}`,
-    items: list.map((q): NierMenuItem => ({ id: `q:${q.id}`, label: q.name, badge: requestStatus(q.status) })),
-    detail: (id) => {
+    items: [{ id: "new", label: ct("requestGame") }, ...list.map((q): NierMenuItem => ({ id: `q:${q.id}`, label: q.name, badge: requestStatus(q.status) }))],
+    detail: (id, row) => {
+      if (id === "new" || !id) return { title: ct("requestGame"), content: requestDetail(row) };
       const q = find(id);
       if (!q) {
         const msg = myRequests === undefined || myRequests === "loading" ? ct("loading") : !Array.isArray(myRequests) ? ct("error", { error: myRequests.error }) : ct("myRequestsEmpty");
@@ -617,7 +619,17 @@ export function myRequestsView(): TabView {
       };
     },
     activate: () => undefined,
-    hint: () => undefined,
+    // « Demander un jeu » : A sur une ligne la remplit (clavier de Steam), ← → change la console.
+    panel: (id) =>
+      id === "new" || !id
+        ? ({
+            rows: requestRows().map((r) => r.id),
+            activate: (row) => activateRequestRow(row, () => void loadMyRequests()),
+            adjust: (row, delta) => adjustRequest(row, delta),
+            adjustable: requestAdjustable,
+          } satisfies PanelDef)
+        : undefined,
+    hint: (id) => (id === "new" || !id ? ct("choose") : undefined),
     back: () => {
       playSfx("back");
       setOpenList(null);
