@@ -12,6 +12,7 @@ import { promptText } from "./prompt";
 import { CatBoxArt, hasBox } from "./boxArt";
 import { fullDetails, gamePageView, isInstalled, kindLabel } from "./gamePage";
 import { checkRa, loadRa, openRaProfile, raState } from "./store";
+import { myReportsView, myRequestsView, requestsCount, unreadReports } from "./community";
 import {
   CAT_KINDS,
   configure,
@@ -113,6 +114,9 @@ export function catalogueGameView(cat: CatState): TabView | null {
 export function catalogueView(cat: CatState): TabView {
   if (!cat.consoles) setTimeout(() => void loadConsoles(), 0);
   const open = cat.openList;
+  // Messages du joueur : ses signalements (discussions avec le support) et ses demandes de jeux.
+  if (open === "my-reports") return myReportsView();
+  if (open === "my-requests") return myRequestsView();
   if (open) {
     const list = cat.lists[open];
     // Filtre de la liste (Tous / Installés / Recomp / Émulation), comme la bibliothèque du launcher.
@@ -194,6 +198,8 @@ export function catalogueView(cat: CatState): TabView {
     { id: "search", label: ct("search") },
     { id: "installed", label: ct("installed"), badge: cat.status?.data?.installed ? String(cat.status.data.installed) : undefined },
     { id: "favorites", label: ct("favorites"), badge: cat.favorites.size ? String(cat.favorites.size) : undefined },
+    { id: "my-reports", label: ct("myReports"), badge: unreadReports() ? `● ${unreadReports()}` : undefined },
+    { id: "my-requests", label: ct("myRequests"), badge: requestsCount() ? String(requestsCount()) : undefined },
     ...consoles.map((c) => ({ id: `console:${c.id}`, label: c.id === -1 ? ct("recomps") : c.name, badge: String(c.romCount) })),
   ];
   return {
@@ -203,6 +209,8 @@ export function catalogueView(cat: CatState): TabView {
       if (id === "search") return { title: ct("search"), content: <NierGameDetail art={false} description={ct("searchDesc")} /> };
       if (id === "installed") return { title: ct("installed"), content: <NierGameDetail art={false} description={ct("installedDesc")} /> };
       if (id === "favorites") return { title: ct("favorites"), content: <NierGameDetail art={false} description={ct("favoritesDesc")} /> };
+      if (id === "my-reports") return { title: ct("myReports"), content: <NierGameDetail art={false} description={ct("myReportsDesc")} /> };
+      if (id === "my-requests") return { title: ct("myRequests"), content: <NierGameDetail art={false} description={ct("myRequestsDesc")} /> };
       const c = consoles.find((x) => `console:${x.id}` === id);
       if (!c) {
         const msg = cat.consolesError ? ct("error", { error: cat.consolesError }) : cat.consoles ? ct("noConsoles") : ct("loading");

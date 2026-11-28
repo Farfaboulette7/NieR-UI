@@ -13,6 +13,17 @@ import { lang, t } from "../launcher/i18n";
 import { shortcutGameId } from "./shortcuts";
 import { CatBoxArt, hasBox } from "./boxArt";
 import {
+  activateReportRow,
+  activateReviewRow,
+  adjustReview,
+  gameReportsDetail,
+  reportDetail,
+  reportRows,
+  reviewAdjustable,
+  reviewRows,
+  reviewsDetail,
+} from "./community";
+import {
   achievementsOf,
   controlsOf,
   loadAchievements,
@@ -505,9 +516,12 @@ type PageItem =
   | "saves"
   | "achievements"
   | "controls"
+  | "report"
   | "news"
   | "media"
   | "ranking"
+  | "reviews"
+  | "gameReports"
   | "steam"
   | "uninstall";
 
@@ -523,9 +537,11 @@ function pageItems(cat: CatState, romId: number, game?: CatGame): PageItem[] {
   const ach = achievementsOf(romId);
   if (ach && ach !== "loading") items.push("achievements");
   if (d?.installed?.executable) items.push("controls");
+  // « Signaler un problème », comme sous le bouton Jouer du launcher : jeu installé seulement.
+  if (installed) items.push("report");
   if (typeof sheet === "object" && sheet.changelog) items.push("news");
   if (d?.game?.screenshotUrls?.length || d?.game?.manuals?.length) items.push("media");
-  items.push("ranking");
+  items.push("ranking", "reviews", "gameReports");
   if (installed && !cat.progress[romId]) items.push("steam", "uninstall");
   return items;
 }
@@ -538,9 +554,12 @@ const ITEM_LABEL: Record<Exclude<PageItem, "play">, CatKey> = {
   saves: "pageSaves",
   achievements: "pageAchievements",
   controls: "pageControls",
+  report: "pageReport",
   news: "pageNews",
   media: "pageMedia",
   ranking: "pageRanking",
+  reviews: "pageReviews",
+  gameReports: "pageGameReports",
   steam: "actionSteamPage",
   uninstall: "actionUninstall",
 };
@@ -569,6 +588,10 @@ function rowsOf(cat: CatState, romId: number, game: CatGame | undefined, item: P
     }
     case "controls":
       return controlRows(romId);
+    case "reviews":
+      return reviewRows(romId);
+    case "report":
+      return reportRows(romId);
     case "achievements": {
       const a = achievementsOf(romId);
       return a && a !== "loading" ? a.achievements.map((_, i) => ({ id: `ach:${i}`, label: "" })) : [];
@@ -612,6 +635,8 @@ function activateRow(cat: CatState, romId: number, item: PageItem, row: string) 
     if (row === "steam:open") return openSteamPage(cat, romId);
     if (row === "steam:shortcut") return void ensureShortcut(romId, true);
   }
+  if (item === "reviews") return activateReviewRow(romId, row);
+  if (item === "report") return activateReportRow(romId, d?.game?.name ?? "", row);
   if (item === "media" && row.startsWith("manual:")) {
     playSfx("confirm");
     return openManual(romId, Number(row.slice(7)), d?.game?.name ?? "");
@@ -746,6 +771,12 @@ function pageDetail(cat: CatState, romId: number, game: CatGame | undefined, ite
       return achievementsDetail(romId, row);
     case "controls":
       return controlsDetail(cat, romId, row);
+    case "report":
+      return reportDetail(romId, row);
+    case "reviews":
+      return reviewsDetail(romId, row);
+    case "gameReports":
+      return gameReportsDetail(romId);
     case "ranking": {
       if (sheet === "loading") return <NierGameDetail art={false} description={ct("loading")} />;
       const rows = sh?.ranking ?? [];
@@ -827,7 +858,15 @@ export function gamePageView(cat: CatState, romId: number, game: CatGame | undef
               return o ? offerRow(o) : undefined;
             })()
           : undefined;
-      return { rows: rows.map((r) => r.id), initial, activate: (row) => activateRow(cat, romId, item, row), browseOnly: item === "achievements" || item === "controls" } satisfies PanelDef;
+      return {
+        rows: rows.map((r) => r.id),
+        initial,
+        activate: (row) => activateRow(cat, romId, item, row),
+        browseOnly: item === "achievements" || item === "controls",
+        // Avis : ← → change la note, la difficulté, ou « terminé à ».
+        adjust: item === "reviews" ? (row, delta) => adjustReview(romId, row, delta) : undefined,
+        adjustable: item === "reviews" ? reviewAdjustable : undefined,
+      } satisfies PanelDef;
     },
     hint: (id) => {
       const item = asItem(id);

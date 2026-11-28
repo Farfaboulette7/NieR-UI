@@ -154,13 +154,21 @@ export const NIER_DETAIL_CSS = `
   height: 40px;
   background-color: var(--nier-mid-trans);
 }
+/* Pas d'image (messages, avis) : pas de case vide. */
+.nier-ach-icon:empty {
+  display: none;
+}
 .nier-ach-icon img {
   width: 100%;
   height: 100%;
   display: block;
   filter: sepia(0.35);
 }
-.nier-ach-item[data-achieved="false"] .nier-ach-icon img {
+.nier-ach-item[data-achieved="false"] /* Pas d'image (messages, avis) : pas de case vide. */
+.nier-ach-icon:empty {
+  display: none;
+}
+.nier-ach-icon img {
   filter: grayscale(1);
 }
 .nier-ach-text {
@@ -174,6 +182,7 @@ export const NIER_DETAIL_CSS = `
   font-size: 16px;
 }
 .nier-ach-desc {
+  white-space: pre-line;
   font-size: 14px;
   color: var(--nier-mid);
 }

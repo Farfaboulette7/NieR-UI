@@ -8,6 +8,7 @@
 import { callable, toaster } from "@decky/api";
 import { ct, type CatKey } from "./i18n";
 import type { CliResult } from "./store";
+import { proposeCrashReport } from "./community";
 
 declare const SteamClient: any;
 
@@ -23,6 +24,9 @@ interface SaveResult {
   noSaveDir?: boolean;
   error?: { code: string; message: string } | null;
   timeout?: boolean;
+  /** Fin de partie : le jeu a planté, et le joueur veut qu'on lui propose un rapport. */
+  crash?: { seconds: number; error: string | null } | null;
+  askReport?: boolean;
 }
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -87,7 +91,12 @@ async function onLifetime(n: any) {
   // Le résultat est écrit par `jouer` (ou par le veilleur si Steam l'a arrêté) : attendu 60 s au plus.
   const r = await call(["resultat", romId, since, 60]);
   // Erreur du moteur (moteur d'avant sans `resultat`…) : ce n'est pas un échec de la sauvegarde.
-  if (r.data) toastResult(r.data as SaveResult);
+  if (r.data) {
+    const res = r.data as SaveResult;
+    toastResult(res);
+    // Le jeu a planté : rapport proposé tout de suite, comme dans le launcher.
+    if (res.askReport && res.crash) proposeCrashReport(romId, res.name || "", res.crash);
+  }
   else if (r.error) console.warn("[NieRDeck] résultat de la sauvegarde illisible", r.error, r.message);
 }
 

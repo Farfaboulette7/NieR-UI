@@ -24,8 +24,12 @@ CLI_NAME = "FarfaLauncherDeck-linux-x86_64"
 LAUNCHER_REPO = "Farfaboulette7/FarfaLauncher"
 # Commandes de lecture appelables directement par l'interface.
 READ_COMMANDS = {"info", "consoles", "jeux", "recherche", "installes", "jeu", "executables", "synchroniser", "historique",
-                 "resultat", "reveil", "favoris", "fiche", "succes", "compte-ra", "commandes"}
-WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer", "veille", "favori"}
+                 "resultat", "reveil", "favoris", "fiche", "succes", "compte-ra", "commandes",
+                 "rapport-fichiers", "mes-rapports", "support", "avis", "signalements", "mes-demandes"}
+WRITE_COMMANDS = {"desinstaller", "choisir", "deconnexion", "utiliser", "langue", "restaurer", "veille", "favori",
+                  "plantage", "avis-supprimer"}
+# Commandes qui reçoivent un texte saisi par le joueur sur leur entrée standard.
+TEXT_COMMANDS = {"signaler", "repondre-rapport", "avis-publier", "rapports-vus"}
 TIMEOUT = 180
 # Pages de livret rendues en PNG (pdftoppm, fourni par SteamOS), gardées au plus.
 MANUAL_PAGES_KEPT = 300
@@ -138,6 +142,12 @@ class Catalogue:
         if not args or args[0] not in READ_COMMANDS | WRITE_COMMANDS:
             return {"error": "internal", "message": "commande refusée"}
         return await run(args)
+
+    async def call_text(self, args: list, text: str) -> dict:
+        """Commande avec un texte du joueur (rapport, message, avis), passé par l'entrée standard."""
+        if not args or args[0] not in TEXT_COMMANDS:
+            return {"error": "internal", "message": "commande refusée"}
+        return await run(args, stdin=str(text)[:64 * 1024], timeout=180)
 
     async def configure(self, server: str | None, token: str | None) -> dict:
         args = ["config"]

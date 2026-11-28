@@ -193,6 +193,8 @@ const state: CatState = {
 };
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((l) => l());
+/** Redessine l'onglet (état tenu par un autre module du Catalogue). */
+export const notifyCatalogue = changed;
 
 export const catalogueState = () => state;
 

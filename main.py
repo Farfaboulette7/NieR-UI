@@ -245,6 +245,9 @@ class Plugin:
     async def catalogue_call(self, args: list):
         return await _catalogue.call(args)
 
+    async def catalogue_call_text(self, args: list, text: str):
+        return await _catalogue.call_text(args, text)
+
     async def catalogue_configure(self, server: str = "", token: str = ""):
         return await _catalogue.configure(server or None, token or None)
 
