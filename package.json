@@ -1,6 +1,6 @@
 {
   "name": "nierdeck",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "description": "Launcher de jeux au style des menus YoRHA de NieR:Automata pour le mode Gaming du Steam Deck.",
   "type": "module",
   "private": true,
