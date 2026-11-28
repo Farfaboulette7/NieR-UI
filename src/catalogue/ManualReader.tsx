@@ -76,6 +76,7 @@ export function ManualReader({ view, status, footerStart }: { view: ManualView; 
         <div
           className="nier-manual-stage"
           data-zoom={view.zoom > 1}
+          data-loading={view.loading}
           ref={(el) => {
             stage = el;
           }}
@@ -143,6 +144,11 @@ export const MANUAL_CSS = `
   width: auto;
   object-fit: contain;
   filter: drop-shadow(5px 5px 0 var(--nier-shadow));
+}
+/* Page suivante en cours de rendu : l'ancienne s'estompe, l'appui se voit tout de suite. */
+.nier-manual-stage[data-loading="true"] .nier-manual-spread {
+  opacity: 0.35;
+  transition: opacity 120ms linear;
 }
 /* Zoom 100 % : la double page entière tient dans l'écran (chaque page, sa moitié de largeur). */
 .nier-manual-stage[data-zoom="false"] .nier-manual-page {

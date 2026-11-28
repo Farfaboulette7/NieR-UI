@@ -124,6 +124,8 @@ class Catalogue:
         self._procs: dict = {}
         # Livret → forme de ses pages (lue une fois par pdfinfo).
         self._pdf_shapes: dict = {}
+        # (jeu, n° du livret) → réponse de `livret` (chemin du PDF en cache).
+        self._manual_files: dict = {}
 
     async def status(self) -> dict:
         """Programme installé, sa version, et l'état de la connexion au serveur."""
@@ -202,11 +204,15 @@ class Catalogue:
     # ───── livrets PDF : le navigateur de Steam ne les affiche pas, on rend page par page ─────
     async def manual_page(self, rom_id: int, index: int, page: int, width: int) -> dict:
         """Page `page` (à partir de 1) du livret n° `index`, en PNG large de `width` pixels."""
-        res = await run(["livret", int(rom_id), int(index)], timeout=600)
-        data = res.get("data") or {}
-        path = data.get("path")
-        if not path or not os.path.isfile(path):
-            return {"error": res.get("error") or "manual", "message": res.get("message") or "Livret introuvable."}
+        # Chemin du PDF gardé : tourner une page ne relance pas le moteur (qui relit le jeu au serveur).
+        data = self._manual_files.get((int(rom_id), int(index)))
+        if not data or not os.path.isfile(data.get("path") or ""):
+            res = await run(["livret", int(rom_id), int(index)], timeout=600)
+            data = res.get("data") or {}
+            if not data.get("path") or not os.path.isfile(data["path"]):
+                return {"error": res.get("error") or "manual", "message": res.get("message") or "Livret introuvable."}
+            self._manual_files[(int(rom_id), int(index))] = data
+        path = data["path"]
         if not shutil.which("pdftoppm") or not shutil.which("pdfinfo"):
             return {"error": "pdftoppm", "message": "pdftoppm manque sur ce Deck (paquet poppler de SteamOS)."}
         shapes = await self._pdf_pages(path)

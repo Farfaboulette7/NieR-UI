@@ -15,7 +15,8 @@ import type { TabView } from "./tabView";
 import { ManualReader, manualAction } from "../catalogue/ManualReader";
 import { catalogueSettingsDetail, catalogueSettingsId, catalogueSettingsItem, catalogueSettingsPanel, catalogueGameView, catalogueView } from "../catalogue/CatalogueTab";
 import { ct } from "../catalogue/i18n";
-import { catalogueReady, manualState, setOpenGame, useCatalogue } from "../catalogue/store";
+import { catalogueReady, loadDetails, loadSheet, manualState, setOpenGame, useCatalogue } from "../catalogue/store";
+import { gamePageView } from "../catalogue/gamePage";
 import { getSettings, updateSettings, useSettings, type NierSettings } from "./settings";
 import {
   formatLastPlayed,
@@ -46,10 +47,11 @@ type SteamSub = "library" | "collections";
 const STEAM_SUBS: SteamSub[] = ["library", "collections"];
 
 // Sélection mémorisée : on la retrouve en revenant d'une autre page Steam.
-const remembered: { tabId: string; steamSub: SteamSub; items: Record<string, string | undefined>; collectionId?: string } = {
+const remembered: { tabId: string; steamSub: SteamSub; items: Record<string, string | undefined>; collectionId?: string; farfaPage: { tab: string; romId: number } | null } = {
   tabId: TABS[0].id,
   steamSub: "library",
   items: {},
+  farfaPage: null,
 };
 
 /** Anciens onglets Bibliothèque et Collections : l'onglet Steam, sur le bon sous-onglet. */
@@ -125,19 +127,31 @@ export function LauncherPage() {
   const catReady = catalogueReady();
   const tabs = TABS.map((x) => ({ id: x.id, label: t(x.label) }));
   if (catReady) tabs.splice(2, 0, { id: "catalogue", label: ct("tab") });
+  // Jeu FarfaLauncher ouvert depuis Récents ou Steam (son raccourci) : la même page que dans
+  // Farfa project, pas celle d'un jeu Steam. Gardée hors du composant (retour après une partie).
+  const [farfaPage, setFarfaPageState] = useState(remembered.farfaPage);
+  const setFarfaPage = (p: { tab: string; romId: number } | null) => setFarfaPageState((remembered.farfaPage = p));
+  const farfaRom = catReady && farfaPage && farfaPage.tab === tabId ? farfaPage.romId : null;
   // Page d'un jeu Farfa project : glissée par-dessus la liste, comme la page d'un jeu Steam.
-  const catGame = tabId === "catalogue" && catReady ? catalogueGameView(cat) : null;
+  const catGame =
+    tabId === "catalogue" && catReady
+      ? catalogueGameView(cat)
+      : farfaRom != null
+        ? { ...gamePageView(cat, farfaRom, undefined), back: () => true }
+        : null;
+  const catRom = tabId === "catalogue" ? cat.openGame : farfaRom;
   const steamKey = steamSub === "collections" && collectionId ? `collection:${collectionId}` : `steam:${steamSub}`;
   const baseKey = tabId === "steam" ? steamKey : tabId === "catalogue" && cat.openList ? `catalogue:${cat.openList}` : tabId;
-  const tabKey = catGame ? `${baseKey}:${cat.openGame}` : baseKey;
+  const tabKey = catGame ? `${baseKey}:${catRom}` : baseKey;
   // Fermeture animée de la page du jeu Farfa project (elle repart vers la droite).
   const [catClosing, setCatClosing] = useState(false);
   // Page laissée ouverte avant le lancement d'un jeu : réaffichée sans animation.
-  const catInstantFor = useRef(cat.openGame);
+  const catInstantFor = useRef(catRom);
   const closeCatGame = () => {
     catInstantFor.current = null;
     setCatClosing(false);
-    setOpenGame(null);
+    if (farfaRom != null) setFarfaPage(null);
+    else setOpenGame(null);
   };
   useEffect(() => {
     if (!catClosing) return;
@@ -183,6 +197,13 @@ export function LauncherPage() {
 
   const openGame = (game: SteamGame) => {
     playSfx("open");
+    // Raccourci d'un jeu FarfaLauncher : sa page Farfa project.
+    const romId = catReady ? farfaRomOf(game.appid, cat.shortcuts) : null;
+    if (romId != null) {
+      setFarfaPage({ tab: tabId, romId });
+      setOpenFarfaGame(romId);
+      return;
+    }
     // Page NieR désactivée : on va sur la page Steam.
     if (getSettings().replaceGamePage) setOverlay({ appid: game.appid, closing: false });
     else openGamePage(game);
@@ -424,7 +445,7 @@ export function LauncherPage() {
       {intro !== null && <NierIntro key={intro} onDone={() => setIntro(null)} />}
       {catGame && (
         // Même présentation que la page d'un jeu Steam (GamePanel) : nom du jeu en titre, pas d'onglets.
-        <NierSlideOver key={cat.openGame} closing={catClosing} instant={catInstantFor.current === cat.openGame} onClosed={closeCatGame}>
+        <NierSlideOver key={catRom ?? undefined} closing={catClosing} instant={catInstantFor.current === catRom} onClosed={closeCatGame}>
           <NierLayout
             title={catGame.title}
             status={<NierStatus time={time} battery={battery} wifi={wifi} bluetooth={bluetooth} />}
@@ -484,6 +505,17 @@ function gameDetail(game: SteamGame, source?: string): ReactNode {
       ]}
     />
   );
+}
+
+/** Jeu RomM d'un raccourci Steam créé par FarfaLauncher (null : jeu Steam ou autre raccourci). */
+function farfaRomOf(appid: number, shortcuts: Record<string, number>): number | null {
+  const found = Object.entries(shortcuts).find(([, a]) => Number(a) === appid);
+  return found ? Number(found[0]) : null;
+}
+
+/** Fiche et reste de la page d'un jeu ouvert hors de l'onglet Farfa project. */
+function setOpenFarfaGame(romId: number) {
+  void loadDetails(romId).then(() => void loadSheet(romId));
 }
 
 /** Provenance d'un jeu lancé : Steam, FarfaLauncher (raccourci du Catalogue) ou autre raccourci. */

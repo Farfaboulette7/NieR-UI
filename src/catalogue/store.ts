@@ -943,9 +943,9 @@ export interface ManualView {
   romId: number;
   index: number;
   title: string;
-  /** Doubles pages du livret (numéros de page), comme le mode « Livre » du launcher. */
+  /** Pages du livret, une par vue. */
   spreads: number[][];
-  /** Double page affichée (index dans `spreads`). */
+  /** Page affichée (index dans `spreads`). */
   spread: number;
   pages: number;
   zoom: number;
@@ -962,25 +962,9 @@ export const manualState = () => manual;
 
 const manualWidth = (zoom: number) => Math.round(MANUAL_WIDTH * zoom);
 
-/**
- * Doubles pages : la couverture seule, puis les pages deux par deux (gauche, droite). Une page
- * à l'italienne (déjà une double page scannée) reste seule.
- */
-function spreadsOf(wide: boolean[]): number[][] {
-  const n = wide.length;
-  if (!n) return [];
-  const out: number[][] = [[1]];
-  let p = 2;
-  while (p <= n) {
-    if (!wide[p - 1] && p + 1 <= n && !wide[p]) {
-      out.push([p, p + 1]);
-      p += 2;
-    } else {
-      out.push([p]);
-      p += 1;
-    }
-  }
-  return out;
+/** Une page PDF à la fois (une page PDF est déjà une page du livret, ou une double page scannée). */
+function spreadsOf(count: number): number[][] {
+  return Array.from({ length: count }, (_, i) => [i + 1]);
 }
 
 const pageCall = (m: ManualView, page: number) =>
@@ -999,7 +983,7 @@ async function showManualPage() {
       manual = { ...manual, loading: false, error: errorText(first) };
       return changed();
     }
-    manual = { ...manual, spreads: spreadsOf(first.data.wide ?? []), pages: first.data.pages };
+    manual = { ...manual, spreads: spreadsOf(first.data.pages), pages: first.data.pages };
   }
   const m = manual;
   const pages = m.spreads[m.spread] ?? [1];
@@ -1009,8 +993,8 @@ async function showManualPage() {
   if (failed) manual = { ...manual, loading: false, error: errorText(failed) };
   else {
     manual = { ...manual, urls: results.map((r) => r.data!.url), loading: false };
-    // Double page suivante préparée pendant la lecture : elle s'affiche tout de suite.
-    for (const p of m.spreads[m.spread + 1] ?? []) void pageCall(m, p);
+    // Deux pages suivantes préparées pendant la lecture : elles s'affichent tout de suite.
+    for (const next of [m.spread + 1, m.spread + 2]) for (const p of m.spreads[next] ?? []) void pageCall(m, p);
   }
   changed();
 }
@@ -1026,7 +1010,7 @@ export function closeManual() {
   changed();
 }
 
-/** Double page précédente / suivante ; false au bout du livret. */
+/** Page précédente / suivante ; false au bout du livret. */
 export function manualTurn(delta: number): boolean {
   if (!manual || !manual.spreads.length) return false;
   const spread = Math.max(0, Math.min(manual.spreads.length - 1, manual.spread + delta));
