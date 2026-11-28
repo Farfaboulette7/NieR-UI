@@ -1,6 +1,7 @@
 // Page d'un jeu au style NieR, à la place de la page Steam (/library/app/<id>).
 // À gauche : les actions (Jouer, Informations, Succès, page Steam d'origine) ;
 // à droite : l'image du jeu ou le contenu de l'entrée sélectionnée.
+import { catalogueState } from "../catalogue/store";
 import { Navigation, useParams } from "@decky/ui";
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { NierAchievementList, NierGameDetail, NierHint, NierLayout, NierOptionList, NierPeopleList, NierStatus, type NierButton } from "../nier-ui";
@@ -40,6 +41,9 @@ function useOriginalPage(appid: number): boolean {
   return originalFor === appid;
 }
 
+/** Raccourci Steam créé par FarfaLauncher (page Farfa project). */
+const isFarfaShortcut = (appid: number) => Object.values(catalogueState().shortcuts).some((a) => Number(a) === appid);
+
 /** Rendu à la place de la page d'un jeu Steam. */
 export function GamePageSwitch({ original }: { original: ReactNode }) {
   const { appid } = useParams<{ appid: string }>();
@@ -52,6 +56,13 @@ export function GamePageSwitch({ original }: { original: ReactNode }) {
   const inLauncher = nier && settings.replaceHome;
   useEffect(() => {
     if (!inLauncher) return;
+    // Jeu FarfaLauncher (au retour d'une partie) : sa page Farfa project est déjà ouverte dans le
+    // launcher ; on y revient sans poser la page d'un jeu Steam par-dessus.
+    if (isFarfaShortcut(id)) {
+      launcherState.overlayAppid = null;
+      Navigation.Navigate("/library/home");
+      return;
+    }
     const fromLauncher = launcherState.overlayAppid === id;
     launcherState.overlayAppid = id;
     if (fromLauncher) Navigation.NavigateBack();

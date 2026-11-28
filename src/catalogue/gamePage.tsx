@@ -1,12 +1,12 @@
 // Page d'un jeu de l'onglet Farfa project : les onglets de la page de jeu de FarfaLauncher
 // (Informations, Installation, Langue, Sauvegardes, Nouveautés, Médias, Classement), en menu
 // à gauche. A sur une ligne de droite agit (jouer, installer, choisir…), B revient à la liste.
-import { Navigation } from "@decky/ui";
 import { toaster } from "@decky/api";
 import type { ReactNode } from "react";
 import { NierAchievementList, NierGameDetail, NierMeter, NierOptionList, NierPeopleList, type NierField, type NierMenuItem, type NierOption } from "../nier-ui";
 import { playSfx } from "../launcher/audio";
 import { formatLastPlayed, getGame, launchGame } from "../launcher/steamLibrary";
+import { openOriginalPage } from "../launcher/GamePage";
 import type { PanelDef, TabView } from "../launcher/tabView";
 import { ct, type CatKey } from "./i18n";
 import { lang, t } from "../launcher/i18n";
@@ -184,12 +184,13 @@ function playActivate(cat: CatState, romId: number, game?: CatGame) {
   void install(romId);
 }
 
+/** La vraie page Steam du raccourci (la page NieR d'un jeu Farfa renvoie à celle-ci). */
 function openSteamPage(cat: CatState, romId: number) {
   const appid = cat.shortcuts[String(romId)];
-  if (appid) return Navigation.Navigate(`/library/app/${appid}`);
+  if (appid) return openOriginalPage(appid);
   void ensureShortcut(romId).then(() => {
     const id = cat.shortcuts[String(romId)];
-    if (id) Navigation.Navigate(`/library/app/${id}`);
+    if (id) openOriginalPage(id);
   });
 }
 
